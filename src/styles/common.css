@@ -1,0 +1,162 @@
+/* Common Styles for TPPMS */
+
+/* Sticky columns for allocation table */
+.sticky-member, .sticky-role {
+    position: sticky;
+    background: white;
+    z-index: 10;
+}
+.sticky-member {
+    left: 0;
+}
+.sticky-role {
+    left: 4rem;
+}
+
+/* Ensure sticky columns maintain background during hover */
+tr:hover .sticky-member, tr:hover .sticky-role { 
+  background: #f9fafb !important; 
+}
+tbody tr:hover .sticky-member, tbody tr:hover .sticky-role { 
+  background: #f9fafb !important; 
+}
+
+/* Ensure header cells always stay visible */
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: #f9fafb !important;
+}
+
+.week-header{background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;font-weight:600}
+
+/* Time selection styles */
+.time-item {
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border: 2px solid transparent;
+}
+.time-item:hover {
+    background-color: #dbeafe;
+    transform: translateY(-1px);
+    border-color: #93c5fd;
+}
+.time-item.active {
+    background-color: #3b82f6;
+    color: #ffffff;
+    border-color: #2563eb;
+    font-weight: 600;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+.time-item.current {
+    border-color: #f59e0b;
+    border-style: dashed;
+    border-width: 2px;
+    background-color: #fef3c7;
+}
+.time-item.active.current {
+    background-color: #3b82f6;
+    color: #ffffff;
+    border-color: #f59e0b;
+    border-style: solid;
+    border-width: 3px;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+}
+
+/* Inline inputs */
+.alloc-input{ width:3.25rem; text-align:center; border:1px solid transparent; border-radius:.375rem; padding:.25rem .375rem; background:transparent; outline:none; }
+.alloc-input:focus{ background:#fff; border-color:#93c5fd; box-shadow:0 0 0 2px rgba(59,130,246,.25); }
+
+.alloc-input-disabled {
+    background-color: #f3f4f6 !important;
+    color: #9ca3af !important;
+    cursor: not-allowed !important;
+    border-color: #d1d5db !important;
+}
+
+.alloc-input-disabled:hover {
+    background-color: #f3f4f6 !important;
+}
+
+/* Time selector styles */
+.time-selector {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Stat card hover effects */
+.stat-card {
+    transition: all 0.2s ease;
+}
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Custom scrollbar for tables */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #e0e0e0;
+    border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #a0a0a0;
+    border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #888;
+}
+
+/* Fixed width for frozen columns */
+.sticky-member, .sticky-role {
+    width: 150px;
+    max-width: 150px;
+    min-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Freeze the first column (Member) */
+.sticky-member {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: white;
+    border-right: 1px solid #e5e7eb;
+    box-shadow: 4px 0 0 #f9fafb, 6px 0 8px -6px rgba(0,0,0,.15);
+}
+
+/* Freeze the second column (Role) */
+.sticky-role {
+    position: sticky;
+    left: 150px; /* exactly after Member column */
+    z-index: 10;
+    background: white;
+    border-right: 1px solid #e5e7eb;
+    box-shadow: 4px 0 0 #f9fafb, 6px 0 8px -6px rgba(0,0,0,.12);
+}
+
+/* Keep header row fixed with higher z-index */
+thead .sticky-member, thead .sticky-role {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: #f9fafb !important;
+}
+
+/* CSS Variables for table column widths */
+:root {
+    --col-member: 150px;
+    --col-role: 150px;
+    --col-bill: 60px;
+    --col-non: 60px;
+    --col-leave: 60px;
+    --col-total: 60px;
+}
