@@ -1,47 +1,60 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../utils/api'
+import { apiWithStatusHandling } from '../utils/apiWithStatusHandling'
+import { useNotification } from '../components/GlobalNotification'
+import { config } from '../config/environment'
 
 export default function Login({ onLogin }) {
   const navigate = useNavigate()
+  const notification = useNotification()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [notification, setNotification] = useState(null)
 
   useEffect(() => {
-    // Load Google OAuth script
+    // Load Google OAuth script and initialize when loaded
     const script = document.createElement('script')
     script.src = 'https://accounts.google.com/gsi/client'
     script.async = true
     script.defer = true
+    
+    script.onload = () => {
+      // Initialize Google OAuth after script loads
+      if (window.google && window.google.accounts) {
+        window.google.accounts.id.initialize({
+          client_id: config.google.clientId,
+          callback: handleGoogleSignIn,
+          auto_prompt: false
+        })
+        
+        // Small delay to ensure DOM is ready
+        setTimeout(() => {
+          const buttonContainer = document.getElementById('googleSignIn')
+          if (buttonContainer) {
+            window.google.accounts.id.renderButton(buttonContainer, { 
+              type: 'standard',
+              theme: 'outline', 
+              size: 'large',
+              text: 'sign_in_with',
+              shape: 'rectangular',
+              logo_alignment: 'left',
+              width: '100%'
+            })
+          }
+        }, 100)
+      }
+    }
+    
+    script.onerror = () => {
+      console.error('Failed to load Google Identity Services script')
+    }
+    
     document.head.appendChild(script)
 
     return () => {
       if (document.head.contains(script)) {
         document.head.removeChild(script)
       }
-    }
-  }, [])
-
-  useEffect(() => {
-    // Initialize Google OAuth
-    if (window.google) {
-      window.google.accounts.id.initialize({
-        client_id: '345815634197-lnmt33p2v0af7n9uptojsi2e3m0cvogk.apps.googleusercontent.com',
-        callback: handleGoogleSignIn
-      })
-      window.google.accounts.id.renderButton(
-        document.getElementById('googleSignIn'),
-        { 
-          theme: 'outline', 
-          size: 'large',
-          text: 'sign_in_with',
-          shape: 'rectangular',
-          logo_alignment: 'left'
-        }
-      )
     }
   }, [])
 
@@ -55,25 +68,25 @@ export default function Login({ onLogin }) {
   }
 
   const handleGoogleSignIn = async (response) => {
-    console.log("Google Sign-In initiated")
-    showNotification('Authenticating with Google...', 'info')
+    // Google Sign-In initiated
+    notification.showInfo('Authenticating with Google...', 3000)
     
     try {
       const responsePayload = decodeJwtResponse(response.credential)
-      console.log("Google user info:", responsePayload)
+      // Google authentication successful
       
-      const loginResponse = await api.login(responsePayload.email, 'google_oauth_user')
+      const loginResponse = await apiWithStatusHandling.login(responsePayload.email, 'google_oauth_user')
       
       if (loginResponse.success) {
         await handleSuccessfulLogin(loginResponse.data)
-        showNotification('Google OAuth successful! Redirecting...', 'success')
+        notification.showSuccess('Google OAuth successful! Redirecting...', 3000)
       } else {
         const errorMessage = loginResponse.detail || 'Google OAuth failed. Please try again.'
-        showNotification(errorMessage, 'error')
+        notification.showError(errorMessage, 5000)
       }
     } catch (error) {
       console.error('Google OAuth error:', error)
-      showNotification('Network error. Please check your connection.', 'error')
+      // Error handling is now done by the enhanced API
     }
   }
 
@@ -121,30 +134,26 @@ export default function Login({ onLogin }) {
   const onSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-    setError(null)
     
     try {
-      const response = await api.login(email, password)
+      const response = await apiWithStatusHandling.login(email, password)
       
       if (response.success) {
         await handleSuccessfulLogin(response.data)
-        showNotification('Login successful! Redirecting...', 'success')
+        // Success notification is handled by the enhanced API
       } else {
         const errorMessage = response.detail || 'Login failed. Please try again.'
-        showNotification(errorMessage, 'error')
+        notification.showError(errorMessage, 5000)
       }
     } catch (err) {
       console.error('Login error', err)
-      setError(err.message || 'Login failed')
+      // Error handling is now done by the enhanced API
     } finally {
       setLoading(false)
     }
   }
 
-  const showNotification = (message, type = 'info') => {
-    setNotification({ message, type })
-    setTimeout(() => setNotification(null), 3000)
-  }
+  // Remove old notification function - using global notifications now
 
   return (
     <div className="bg-gray-100 min-h-screen flex items-center justify-center">
@@ -204,18 +213,31 @@ export default function Login({ onLogin }) {
             </button>
           </form>
 
-          {/* Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Or continue with</span>
-            </div>
-          </div>
+          {/* Google OAuth Section - Only show if enabled */}
+          {config.features.googleAuth && (
+            <>
+              {/* Divider */}
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                </div>
+              </div>
 
-          {/* Google OAuth Button */}
-          <div id="googleSignIn" className="w-full"></div>
+              {/* Google OAuth Button */}
+              <div className="w-full">
+                <div id="googleSignIn" className="w-full flex justify-center"></div>
+                {!window.google && (
+                  <div className="w-full py-3 px-4 border border-gray-300 rounded-lg text-center text-gray-500 text-sm">
+                    <i className="fab fa-google mr-2"></i>
+                    Loading Google Sign-In...
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Demo Credentials */}
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
@@ -223,7 +245,7 @@ export default function Login({ onLogin }) {
               <i className="fas fa-info-circle mr-2 text-blue-600"></i>Test Credentials
             </h4>
             <div className="text-xs text-gray-600 space-y-1">
-              <div><strong>Email:</strong> bhavesh.korane@tekditechnologies.com</div>
+              <div><strong>Email:</strong> user@example.com</div>
               <div><strong>Password:</strong> any password (ignored)</div>
               <div><strong>Role:</strong> Team Member (default)</div>
               <div className="mt-2 pt-2 border-t border-gray-200">
@@ -235,15 +257,7 @@ export default function Login({ onLogin }) {
         </div>
       </div>
 
-      {/* Notification */}
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg transition-all duration-300 ${
-          notification.type === 'success' ? 'bg-green-500 text-white' : 
-          notification.type === 'error' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'
-        }`}>
-          {notification.message}
-        </div>
-      )}
+      {/* Global notifications are now handled by NotificationProvider */}
     </div>
   )
 }

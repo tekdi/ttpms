@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../utils/api'
 
-export default function Navbar({ onLogout }) {
+export default function Navbar({ onLogout, onRoleChange }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [currentUser, setCurrentUser] = useState('')
@@ -69,6 +69,11 @@ export default function Navbar({ onLogout }) {
     
     setCurrentRole(newRole)
     sessionStorage.setItem('currentRole', newRole)
+    
+    // Notify parent component about role change
+    if (onRoleChange) {
+      onRoleChange(newRole)
+    }
     
     // Navigate to appropriate page based on new role - exactly like HTML frontend
     if (newRole === 'Admin') {

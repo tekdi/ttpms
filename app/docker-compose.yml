@@ -1,0 +1,42 @@
+# TPPMS Backend - Environment-Driven Docker Compose
+# Supports development and production modes via DEPLOY_TARGET variable
+
+services:
+  tppms-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${DEPLOY_TARGET:-production}
+    container_name: ${CONTAINER_NAME:-tppms-backend}
+    env_file:
+      - .env
+    environment:
+      # Override environment variables if needed
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DEBUG=${DEBUG:-false}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks:
+      - tppms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      # Mount source code for development (only in development mode)
+      - ${PWD}:/app:${VOLUME_MODE:-ro}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tppms-backend.rule=Host(`${BACKEND_HOST:-localhost}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.tppms-backend.entrypoints=web"
+      - "traefik.http.services.tppms-backend.loadbalancer.server.port=8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  tppms-network:
+    driver: bridge
+    name: tppms-network

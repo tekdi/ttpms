@@ -5,6 +5,10 @@ import Login from './pages/Login.jsx'
 import Admin from './pages/Admin.jsx'
 import ProjectOwner from './pages/ProjectOwner.jsx'
 import TeamMember from './pages/TeamMember.jsx'
+import PermissionDenied from './components/PermissionDenied.jsx'
+import ServerError from './components/ServerError.jsx'
+import { NotificationProvider, useNotification } from './components/GlobalNotification.jsx'
+import { setGlobalNotificationHandler } from './utils/apiWithStatusHandling.js'
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -48,10 +52,17 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-export default function App() {
+// Main App Component with Notification Integration
+function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [currentRole, setCurrentRole] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const notification = useNotification()
+
+  // Set up global notification handler for API
+  useEffect(() => {
+    setGlobalNotificationHandler(notification)
+  }, [notification])
 
   useEffect(() => {
     checkAuthStatus()
@@ -88,6 +99,12 @@ export default function App() {
     return () => window.removeEventListener('storage', handleStorageChange)
   }, [])
 
+  // Handle role change from Navbar
+  const handleRoleChange = (newRole) => {
+    setCurrentRole(newRole)
+    // Role changed successfully
+  }
+
   const getDefaultPath = () => {
     if (!isAuthenticated) return '/login'
     if (currentRole === 'Admin') return '/admin'
@@ -109,7 +126,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen">
-        {isAuthenticated && <Navbar onLogout={() => setIsAuthenticated(false)} />}
+        {isAuthenticated && <Navbar onLogout={() => setIsAuthenticated(false)} onRoleChange={handleRoleChange} />}
         <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           <Routes>
             <Route path="/" element={<Navigate to={getDefaultPath()} replace />} />
@@ -125,10 +142,21 @@ export default function App() {
             <Route path="/team" element={
               isAuthenticated ? <TeamMember /> : <Navigate to="/login" replace />
             } />
+            <Route path="/permission-denied" element={<PermissionDenied />} />
+            <Route path="/server-error" element={<ServerError />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </div>
     </ErrorBoundary>
+  )
+}
+
+// Main App wrapper with NotificationProvider
+export default function App() {
+  return (
+    <NotificationProvider>
+      <AppContent />
+    </NotificationProvider>
   )
 }

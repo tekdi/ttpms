@@ -1,248 +1,330 @@
-# TPPMS React Frontend
+# TPPMS Backend API
 
-A complete React-based frontend for the Team Project & People Management System (TPPMS), built to work exactly like the HTML frontend with enhanced functionality and modern UI components.
+A FastAPI-based backend service for the Time and Project Performance Management System (TPPMS).
 
 ## 🚀 Features
 
-### ✅ Complete Authentication System
-- **Email/Password Login**: Traditional login with backend API integration
-- **Google OAuth Integration**: Full Google Sign-In support with automatic role detection
-- **Session Management**: Secure session handling with automatic role-based routing
-- **Role-Based Access Control**: Automatic redirection based on user roles (Admin, Project Owner, Team Member)
+- **FastAPI Framework**: Modern, fast web framework for building APIs
+- **Session-based Authentication**: Secure user authentication without passwords
+- **MySQL Database**: Robust relational database support
+- **CORS Support**: Cross-origin resource sharing for frontend integration
+- **Environment Configuration**: Flexible configuration management
+- **Docker Support**: Containerized deployment ready
+- **RESTful API**: Clean and intuitive API endpoints
 
-### ✅ Comprehensive Admin Dashboard
-- **Bench Summary**: Real-time bench analytics with charts and metrics
-- **User Management**: Complete user overview with active, new, and inactive users
-- **Project Management**: Project status tracking and management
-- **Data Visualization**: Interactive charts using Chart.js
-- **CSV Export**: Download functionality for bench summary data
+## 📋 Prerequisites
 
-### ✅ Project Owner Dashboard
-- **Project List View**: Comprehensive project overview with allocation percentages
-- **Time Allocation Management**: Editable weekly time allocation tables
-- **Project Selection**: Interactive project selection and management
-- **Copy Last Week**: Functionality to copy previous week's allocations
+- Python 3.8+
+- MySQL 5.7+ or 8.0+
+- pip (Python package manager)
+- Git
 
-### ✅ Team Member Dashboard
-- **Time Allocation View**: Weekly breakdown of project time allocations
-- **Project Overview**: List of assigned projects with roles
-- **Summary Dashboard**: Visual summary with metrics and weekly overview
-- **Responsive Tables**: Sticky columns and mobile-friendly design
+## 🛠️ Installation & Setup
 
-### ✅ Advanced Time Selection
-- **Smart Period Detection**: Automatic current period highlighting
-- **Week Calculations**: Dynamic week calculation based on month/year
-- **Visual Indicators**: Current period highlighting with color coding
-- **Interactive Selection**: Click-based month and week selection
+### 1. Clone the Repository
 
-### ✅ Modern UI/UX
-- **Responsive Design**: Mobile-first responsive layout
-- **Tailwind CSS**: Modern utility-first CSS framework
-- **Font Awesome Icons**: Professional icon set throughout the application
-- **Smooth Animations**: CSS transitions and hover effects
-- **Professional Styling**: Consistent design language matching the HTML frontend
-
-## 🛠️ Technology Stack
-
-- **React 18**: Latest React with hooks and modern patterns
-- **React Router**: Client-side routing with protected routes
-- **Tailwind CSS**: Utility-first CSS framework
-- **Chart.js**: Interactive charts and data visualization
-- **Font Awesome**: Professional icon library
-- **Vite**: Fast build tool and development server
-
-## 📁 Project Structure
-
-```
-src/
-├── components/
-│   ├── AdminDashboard.jsx    # Admin dashboard with charts
-│   ├── Navbar.jsx            # Navigation with role-based menu
-│   └── TimeSelector.jsx      # Advanced time period selection
-├── pages/
-│   ├── Admin.jsx             # Complete admin interface
-│   ├── Login.jsx             # Authentication with Google OAuth
-│   ├── ProjectOwner.jsx      # Project owner dashboard
-│   └── TeamMember.jsx        # Team member interface
-├── utils/
-│   ├── api.js                # Backend API integration
-│   └── csv.js                # CSV export functionality
-├── App.jsx                   # Main application with routing
-└── index.css                 # Global styles and custom CSS
+```bash
+git clone https://github.com/tekdi/ttpms.git
+cd ttpms/backend
 ```
 
-## 🔧 Installation & Setup
+### 2. Create Virtual Environment
 
-### Prerequisites
-- Node.js 16+ and npm
-- Backend server running on `http://127.0.0.1:8000`
+```bash
+# Create virtual environment
+python -m venv venv
 
-### Setup Steps
-1. **Clone and Install Dependencies**
-   ```bash
-   cd tppms-react
-   npm install
-   ```
+# Activate virtual environment
+# On Linux/Mac:
+source venv/bin/activate
+# On Windows:
+venv\Scripts\activate
+```
 
-2. **Start Development Server**
-   ```bash
-   npm run dev
-   ```
+### 3. Install Dependencies
 
-3. **Build for Production**
-   ```bash
-   npm run build
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-## 🌐 API Integration
+### 4. Environment Configuration
 
-The React frontend integrates with the TPPMS backend APIs:
+```bash
+# Copy environment template
+cp env.example .env
 
-### Authentication Endpoints
-- `POST /api/auth/login` - User login
-- `POST /api/auth/logout` - User logout
-- `GET /api/auth/me` - Current user info
+# Edit .env file with your configuration
+nano .env
+```
 
-### Admin Endpoints
-- `GET /api/admin/dashboard-summary` - Admin dashboard data
-- `GET /api/admin/user-counts` - User statistics
-- `GET /api/admin/users/*` - User management
-- `GET /api/admin/projects/*` - Project management
+**Required Environment Variables:**
 
-### Project & Allocation Endpoints
-- `GET /api/projects/my-projects` - User's projects
-- `GET /api/projects/my-po-projects` - Project owner projects
-- `GET /api/projects/*/editable-allocations` - Editable allocations
-- `PUT /api/allocations/*` - Update allocations
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATABASE_URL` | MySQL connection string | `mysql+pymysql://username:password@localhost:3306/tppms` |
+| `SECRET_KEY` | JWT signing key (32+ chars) | Generate using command below |
 
-### Bench Management
-- `GET /api/bench/summary` - Bench summary
-- `GET /api/bench/fully-benched` - Fully benched users
-- `GET /api/bench/partial-benched` - Partially benched users
+**Generate Secure Secret Key:**
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
 
-## 🔐 Authentication Flow
+### 5. Database Setup
 
-1. **Login Process**
-   - User enters email/password or uses Google OAuth
-   - Backend validates credentials and returns user data
-   - Frontend stores session and user information
-   - Automatic role detection and routing
+```bash
+# Create MySQL database
+mysql -u root -p
+CREATE DATABASE tppms;
+EXIT;
 
-2. **Role-Based Routing**
-   - **Admin**: `/admin` - Full admin dashboard
-   - **Project Owner**: `/po` - Project management interface
-   - **Team Member**: `/team` - Time allocation view
+# Import schema (if available)
+mysql -u root -p tppms < ../tppms_schema.sql
+```
 
-3. **Session Management**
-   - Session ID stored in sessionStorage
-   - Automatic API authentication
-   - Secure logout with session cleanup
+### 6. Start the Server
 
-## 📊 Data Visualization
+```bash
+# Development mode
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-### Admin Dashboard Charts
-- **Bench Summary Bar Chart**: Visual representation of bench status
-- **User Distribution Doughnut Chart**: User status breakdown
-- **Project Status Chart**: Project lifecycle overview
+# Production mode
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+```
 
-### Interactive Elements
-- **Real-time Updates**: Live data from backend APIs
-- **Responsive Charts**: Mobile-friendly chart components
-- **Data Export**: CSV download functionality
+The API will be available at: `http://localhost:8000`
 
-## 🎨 UI Components
+## 🐳 Docker Deployment
 
-### Time Selector
-- **Smart Period Detection**: Automatic current period highlighting
-- **Interactive Selection**: Click-based month and week selection
-- **Visual Feedback**: Color-coded current and selected periods
+### Using Docker Compose (Recommended)
 
-### Navigation
-- **Role-Based Menu**: Dynamic navigation based on user role
-- **User Profile**: User information and logout functionality
-- **Mobile Responsive**: Collapsible mobile navigation
+```bash
+# Start all services
+docker-compose up -d
 
-### Tables
-- **Sticky Columns**: Fixed first column for better UX
-- **Responsive Design**: Mobile-friendly table layouts
-- **Hover Effects**: Interactive row highlighting
+# View logs
+docker-compose logs -f
 
-## 🚀 Key Improvements Over HTML Frontend
+# Stop services
+docker-compose down
+```
 
-1. **Enhanced User Experience**
-   - Single-page application (SPA) with smooth transitions
-   - Real-time data updates without page refreshes
-   - Interactive charts and data visualization
+### Manual Docker Build
 
-2. **Better Performance**
-   - Component-based architecture for efficient rendering
-   - Optimized API calls with proper error handling
-   - Lazy loading and code splitting capabilities
+```bash
+# Build image
+docker build -t tppms-backend .
 
-3. **Modern Development**
-   - Type-safe development with proper error handling
-   - Component reusability and maintainability
-   - Modern React patterns and best practices
+# Run container
+docker run -d \
+  --name tppms-backend \
+  -p 8000:8000 \
+  --env-file .env \
+  tppms-backend
+```
 
-4. **Enhanced Functionality**
-   - Advanced time period selection with visual indicators
-   - Comprehensive admin dashboard with charts
-   - Better project management interface
+## 📚 API Documentation
 
-## 🔒 Security Features
+Once the server is running, access the interactive API documentation:
 
-- **Session Management**: Secure session handling
-- **Role-Based Access**: Protected routes based on user roles
-- **API Security**: Proper authentication headers
-- **Input Validation**: Client-side and server-side validation
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
 
-## 📱 Responsive Design
+### Key Endpoints
 
-- **Mobile-First**: Optimized for mobile devices
-- **Tablet Support**: Responsive layouts for tablets
-- **Desktop Experience**: Full-featured desktop interface
-- **Touch-Friendly**: Optimized for touch interactions
+#### Authentication
+```bash
+POST /api/auth/login          # User login
+POST /api/auth/logout         # User logout
+GET  /api/auth/me            # Get current user info
+```
+
+#### Users & Roles
+```bash
+GET  /api/users              # List all users
+GET  /api/users/{user_id}    # Get user details
+GET  /api/roles              # List all roles
+```
+
+#### Projects & Time Tracking
+```bash
+GET  /api/projects           # List projects
+GET  /api/timesheet         # Get timesheet data
+POST /api/timesheet/update  # Update time entries
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | ✅ | - | MySQL connection string |
+| `SECRET_KEY` | ✅ | - | JWT signing secret |
+| `ENVIRONMENT` | ❌ | `production` | Environment mode |
+| `DEBUG` | ❌ | `false` | Debug mode |
+| `ALLOWED_ORIGINS` | ❌ | `["*"]` | CORS allowed origins |
+| `LOG_LEVEL` | ❌ | `INFO` | Logging level |
+
+### CORS Configuration
+
+For production, update `ALLOWED_ORIGINS` in your `.env`:
+
+```bash
+# Development (allow all)
+ALLOWED_ORIGINS=["*"]
+
+# Production (specific domains)
+ALLOWED_ORIGINS=["https://yourdomain.com","https://www.yourdomain.com"]
+```
 
 ## 🧪 Testing
 
-The application has been tested for:
-- ✅ Authentication flows (email/password and Google OAuth)
-- ✅ Role-based routing and access control
-- ✅ API integration with backend services
-- ✅ Responsive design across devices
-- ✅ Data visualization and chart functionality
-- ✅ CSV export functionality
-- ✅ Time period selection and management
+```bash
+# Run tests (if available)
+pytest
 
-## 🚀 Getting Started
+# Test API endpoints
+curl -X GET http://localhost:8000/api/health
 
-1. **Start the Backend Server**
-   ```bash
-   cd backend
-   python main.py
-   ```
+# Test authentication
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password"}'
+```
 
-2. **Start the React Frontend**
-   ```bash
-   cd tppms-react
-   npm run dev
-   ```
+## 📝 Development
 
-3. **Access the Application**
-   - Open `http://localhost:5173` in your browser
-   - Login with test credentials or Google OAuth
-   - Navigate based on your user role
+### Code Structure
 
-## 📝 Test Credentials
+```
+backend/
+├── main.py              # FastAPI application and routes
+├── config.py            # Configuration management
+├── database.py          # Database connection setup
+├── requirements.txt     # Python dependencies
+├── Dockerfile          # Docker configuration
+├── docker-compose.yml  # Multi-container setup
+└── .env.example        # Environment template
+```
 
-- **Email**: `bhavesh.korane@tekditechnologies.com`
-- **Password**: Any password (ignored by backend)
-- **Default Role**: Team Member (auto-detected based on actual roles)
+### Adding New Endpoints
+
+1. Define Pydantic models for request/response
+2. Add route handlers in `main.py`
+3. Update API documentation
+4. Test the endpoints
+
+### Database Migrations
+
+For schema changes:
+1. Update the database schema
+2. Create migration scripts
+3. Test in development environment
+4. Apply to production
+
+## 🔒 Security
+
+### Best Practices Implemented
+
+- ✅ Environment variable validation
+- ✅ Secure session-based authentication
+- ✅ CORS configuration
+- ✅ Input validation with Pydantic
+- ✅ SQL injection prevention with SQLAlchemy
+
+### Security Recommendations
+
+1. **Secret Key**: Use a strong, random SECRET_KEY (32+ characters)
+2. **Database**: Use dedicated database user with minimal permissions
+3. **HTTPS**: Always use HTTPS in production
+4. **CORS**: Restrict ALLOWED_ORIGINS to specific domains
+5. **Environment**: Never commit `.env` files to version control
+
+### Generate Secure Credentials
+
+```bash
+# Generate SECRET_KEY
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Generate database password
+python -c "import secrets; print(secrets.token_urlsafe(16))"
+```
+
+## 🚀 Deployment
+
+### Production Checklist
+
+- [ ] Set `ENVIRONMENT=production`
+- [ ] Use strong `SECRET_KEY`
+- [ ] Configure specific `ALLOWED_ORIGINS`
+- [ ] Set up SSL/TLS certificates
+- [ ] Configure reverse proxy (nginx/apache)
+- [ ] Set up monitoring and logging
+- [ ] Configure database backups
+- [ ] Set up health checks
+
+### Environment-specific Configurations
+
+**Development:**
+```bash
+ENVIRONMENT=development
+DEBUG=true
+ALLOWED_ORIGINS=["http://localhost:3000","http://localhost:5173"]
+```
+
+**Production:**
+```bash
+ENVIRONMENT=production
+DEBUG=false
+ALLOWED_ORIGINS=["https://yourdomain.com"]
+```
+
+## 📊 Monitoring & Logging
+
+### Health Check
+
+```bash
+curl http://localhost:8000/api/health
+```
+
+### Logs
+
+```bash
+# Docker logs
+docker-compose logs -f tppms-backend
+
+# Application logs are configured with structured logging
+```
 
 ## 🤝 Contributing
 
-This React frontend is designed to be a complete replacement for the HTML frontend while maintaining all functionality and improving the user experience. All components are built with modern React patterns and are fully compatible with the existing backend APIs.
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-This project is part of the TPPMS system and follows the same licensing terms.
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+For support and questions:
+
+1. Check the [API Documentation](http://localhost:8000/docs)
+2. Review this README
+3. Check existing issues on GitHub
+4. Create a new issue if needed
+
+## 🔄 Version History
+
+- **v1.0.0** - Initial release with core functionality
+  - Session-based authentication
+  - User and role management
+  - Project and timesheet APIs
+  - Docker support
+
+---
+
+**Note**: This is a production-ready backend service. Ensure all security configurations are properly set before deploying to production environments.
