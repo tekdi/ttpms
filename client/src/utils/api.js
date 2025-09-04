@@ -1,4 +1,6 @@
-const baseURL = 'http://127.0.0.1:8000/api'
+import { config } from '../config/environment.js'
+
+const baseURL = config.api.baseUrl
 const headers = { 'Content-Type': 'application/json' }
 
 async function request(path, options = {}) {
@@ -11,21 +13,49 @@ async function request(path, options = {}) {
     requestHeaders['X-Session-ID'] = sessionId
   }
   
-  const res = await fetch(baseURL + path, { 
-    ...options, 
-    headers: requestHeaders
-  })
+  // Add timeout and debug logging
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), config.api.timeout)
   
-  const text = await res.text()
-  let data = null
-  try { data = text ? JSON.parse(text) : null } catch (e) { data = text }
-  if (!res.ok) {
-    const err = new Error(data?.detail || data?.message || res.statusText || 'API error')
-    err.status = res.status
-    err.data = data
-    throw err
+  if (config.debug.enabled && config.debug.consoleLogging) {
+    console.log(`🌐 API Request: ${options.method || 'GET'} ${baseURL + path}`)
   }
-  return data
+  
+  try {
+    const res = await fetch(baseURL + path, { 
+      ...options, 
+      headers: requestHeaders,
+      signal: controller.signal
+    })
+    
+    clearTimeout(timeoutId)
+    
+    const text = await res.text()
+    let data = null
+    try { data = text ? JSON.parse(text) : null } catch (e) { data = text }
+    
+    if (!res.ok) {
+      if (config.debug.enabled && config.debug.consoleLogging) {
+        console.error(`❌ API Error: ${res.status} ${res.statusText} - ${path}`, data)
+      }
+      const err = new Error(data?.detail || data?.message || res.statusText || 'API error')
+      err.status = res.status
+      err.data = data
+      throw err
+    }
+    
+    if (config.debug.enabled && config.debug.consoleLogging) {
+      console.log(`✅ API Response: ${path}`, data)
+    }
+    
+    return data
+  } catch (error) {
+    clearTimeout(timeoutId)
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${config.api.timeout}ms`)
+    }
+    throw error
+  }
 }
 
 export function get(path) {
@@ -67,6 +97,7 @@ export const api = {
   getAllocation: (id) => get(`/allocations/${id}`),
   updateAllocation: (id, body) => put(`/allocations/${id}`, body),
   deleteAllocation: (id) => del(`/allocations/${id}`),
+  saveAllocation: (body) => post('/allocation', body),
   checkOverallocation: () => get('/allocation/check-overallocation'),
   getUserWeekBreakdown: () => get('/allocation/user-week-breakdown'),
 
@@ -87,8 +118,15 @@ export const api = {
   getAdminProjectsActive: () => get('/admin/projects/active'),
   getAdminProjectsOnHold: () => get('/admin/projects/on-hold'),
   getAdminProjectsCompleted: () => get('/admin/projects/completed'),
+  
+  // Note: Admin uses same APIs as PO - backend grants admin access to all projects
 
   // Weekly remark
   getWeeklyRemark: (userId, week) => get(`/weekly-remark/${userId}/${week}`),
   updateWeeklyRemark: (userId, week, body) => put(`/weekly-remark/${userId}/${week}`, body),
+
+  // Bench Summary APIs
+  getBenchSummary: (year, week) => get(`/bench/summary?year=${year}&week=${week}`),
+  getBenchData: (endpoint, year, week) => get(`/bench/${endpoint}?year=${year}&week=${week}`),
+  getAdminDashboardSummary: () => get('/admin/dashboard-summary'),
 }

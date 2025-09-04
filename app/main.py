@@ -334,7 +334,6 @@ def login(request: LoginRequest, db: SessionLocal = Depends(get_db)):
         
         roles = [dict(role._mapping) for role in roles_result.fetchall()]
 
-        # print(roles,"*"*100)
         user_roles = []
         for i in roles:
             user_roles.append(i['id']) 
@@ -374,14 +373,13 @@ def login(request: LoginRequest, db: SessionLocal = Depends(get_db)):
             "message": "Login successful"
         }
 
-        # print(response_data["roles"],"*"*100)
         
         return LoginResponse(success=True, data=response_data)
         
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"bhavesh Login failed: {str(e)}")
 
 @app.get("/api/auth/me")
 def get_current_user_info(current_user: dict = Depends(get_current_user)):
@@ -419,7 +417,6 @@ def get_user_profile(current_user: dict = Depends(get_current_user), db: Session
         
         roles = [dict(role._mapping) for role in roles_result.fetchall()]
 
-        # print(roles,"*"*100)
         
         # Get user projects
         projects_result = db.execute(text("""

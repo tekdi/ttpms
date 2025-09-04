@@ -1,9 +1,37 @@
 import React, { useState, useEffect } from 'react'
-import { api } from '../utils/api'
+import { api, get } from '../utils/api'
 
 export default function ProjectOwner() {
+  // Get current corporate week (Monday-Friday) - moved to top
+  const getCurrentWeek = () => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const startOfYear = new Date(year, 0, 1)
+    
+    // Find first Monday of the year
+    const firstMonday = new Date(startOfYear)
+    while (firstMonday.getDay() !== 1) { // 1 = Monday
+      firstMonday.setDate(firstMonday.getDate() + 1)
+    }
+    
+    // Calculate weeks since first Monday
+    const daysSinceFirstMonday = Math.floor((now - firstMonday) / (24 * 60 * 60 * 1000))
+    const weekNumber = Math.floor(daysSinceFirstMonday / 7) + 1
+    
+    return Math.max(1, weekNumber)
+  }
+
+  // Initialize with current period
+  const getCurrentPeriod = () => {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth() + 1 // JavaScript months are 0-based
+    const currentWeek = getCurrentWeek()
+    return { year: currentYear, month: currentMonth, week: currentWeek }
+  }
+  
   // State for time period selection
-  const [selectedPeriod, setSelectedPeriod] = useState({ year: 2025, month: 8, week: 32 })
+  const [selectedPeriod, setSelectedPeriod] = useState(getCurrentPeriod())
   
   // State for projects
   const [projects, setProjects] = useState([])
@@ -20,7 +48,13 @@ export default function ProjectOwner() {
   
   // UI state
   const [loading, setLoading] = useState(true)
+  const [projectDataLoading, setProjectDataLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  // Overallocation modal state
+  const [showOverallocationModal, setShowOverallocationModal] = useState(false)
+  const [overallocationData, setOverallocationData] = useState({})
+  const [lastEditContext, setLastEditContext] = useState(null)
 
   useEffect(() => {
     loadProjects()
@@ -28,43 +62,63 @@ export default function ProjectOwner() {
 
   useEffect(() => {
     if (selectedProject) {
-      loadProjectUsers(selectedProject.id)
-      loadProjectWeeklyAllocations(selectedProject.id)
+      // Load data sequentially to prevent race conditions
+      const loadProjectData = async () => {
+        try {
+          setProjectDataLoading(true)
+          // Loading project data
+          
+          // First load users
+          await loadProjectUsers(selectedProject.id)
+          
+          // Then load allocations (which will merge with users)
+          await loadProjectWeeklyAllocations(selectedProject.id)
+          
+          // Project data loading completed
+        } catch (error) {
+          console.error('Error loading project data:', error)
+          setError('Failed to load project data. Please try again.')
+        } finally {
+          setProjectDataLoading(false)
+        }
+      }
+      
+      loadProjectData()
+    } else {
+      setProjectDataLoading(false)
     }
   }, [selectedProject, selectedPeriod])
 
   // Helper functions (moved to top to fix reference errors)
-  // Get display weeks (current week + past 3 weeks)
+  // Get display weeks based on selected period
   const getDisplayWeeks = () => {
+    const selectedWeek = selectedPeriod.week
     const currentWeek = getCurrentWeek()
     const weeks = []
-    for (let i = 3; i >= 0; i--) {
-      const weekNumber = currentWeek - i
-      if (weekNumber > 0) {
-        weeks.push(weekNumber)
+    
+    // If selected week is current or future, show selected week + previous weeks
+    if (selectedWeek >= currentWeek) {
+      // Show 4 weeks: selected week and 3 previous weeks
+      for (let i = 3; i >= 0; i--) {
+        const weekNumber = selectedWeek - i
+        if (weekNumber > 0) {
+          weeks.push(weekNumber)
+        }
+      }
+    } else {
+      // If selected week is in the past, show current week + past weeks
+      for (let i = 3; i >= 0; i--) {
+        const weekNumber = currentWeek - i
+        if (weekNumber > 0) {
+          weeks.push(weekNumber)
+        }
       }
     }
+    
     return weeks
   }
 
-  // Get current corporate week (Monday-Friday based)
-  const getCurrentWeek = () => {
-    const now = new Date()
-    const year = now.getFullYear()
-    const startOfYear = new Date(year, 0, 1)
-    
-    // Find first Monday of the year
-    const firstMonday = new Date(startOfYear)
-    while (firstMonday.getDay() !== 1) { // 1 = Monday
-      firstMonday.setDate(firstMonday.getDate() + 1)
-    }
-    
-    // Calculate week number
-    const diffTime = now.getTime() - firstMonday.getTime()
-    const diffWeeks = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7))
-    
-    return Math.max(1, diffWeeks)
-  }
+
 
   // Get weeks for a specific month (corporate weeks - Monday-Friday based)
   const getWeeksForMonth = (year, month) => {
@@ -135,17 +189,29 @@ export default function ProjectOwner() {
     const startMonth = monthNames[weekStart.getMonth()]
     const endMonth = monthNames[weekEnd.getMonth()]
     
+    // Format dates for backend (YYYY-MM-DD format)
+    const formatDate = (date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
     if (startMonth === endMonth) {
       return {
         display: `Week ${weekNumber}`,
         dates: `${startMonth} ${weekStart.getDate()}-${weekEnd.getDate()}`,
-        fullDisplay: `Week ${weekNumber} (${startMonth} ${weekStart.getDate()}-${weekEnd.getDate()})`
+        fullDisplay: `Week ${weekNumber} (${startMonth} ${weekStart.getDate()}-${weekEnd.getDate()})`,
+        startDate: formatDate(weekStart),
+        endDate: formatDate(weekEnd)
       }
     } else {
       return {
         display: `Week ${weekNumber}`,
         dates: `${startMonth} ${weekStart.getDate()}-${endMonth} ${weekEnd.getDate()}`,
-        fullDisplay: `Week ${weekNumber} (${startMonth} ${weekStart.getDate()}-${endMonth} ${weekEnd.getDate()})`
+        fullDisplay: `Week ${weekNumber} (${startMonth} ${weekStart.getDate()}-${endMonth} ${weekEnd.getDate()})`,
+        startDate: formatDate(weekStart),
+        endDate: formatDate(weekEnd)
       }
     }
   }
@@ -278,10 +344,49 @@ export default function ProjectOwner() {
         weeks: getDisplayWeeks().join(',')
       })
       
-      const data = await api.getProjectWeeklyAllocations(`${projectId}?${params.toString()}`)
+      console.log('Loading weekly allocations with params:', params.toString())
+      
+      // Use the correct API endpoint with query parameters
+      const data = await get(`/projects/${projectId}/weekly-allocations?${params.toString()}`)
+      console.log('Weekly allocations response:', data)
+      
       if (data && typeof data === 'object' && data.data?.users) {
+        console.log('Setting weekly allocations users:', data.data.users)
         setWeeklyAllocations(data.data.users)
+        
+        // Update projectUsers with the allocation data - IMPROVED VERSION
+        setProjectUsers(prevUsers => {
+          if (!prevUsers || prevUsers.length === 0) {
+            console.log('No previous users to update, returning allocation data as is')
+            return data.data.users
+          }
+
+          const updatedUsers = prevUsers.map(user => {
+            const userAllocData = data.data.users.find(u => u.user_id === user.id)
+            if (userAllocData) {
+              console.log(`Merging allocation data for user ${user.id}:`, userAllocData)
+              
+              // Merge user info with allocation data, preserving both
+              const mergedUser = {
+                ...user, // Keep original user data (name, role, etc.)
+                ...userAllocData, // Add allocation data (week35, week36, etc.)
+                id: user.id, // Ensure ID stays consistent
+                user_id: user.id // Ensure user_id is set for consistency
+              }
+              
+              console.log(`Merged user ${user.id}:`, mergedUser)
+              return mergedUser
+            } else {
+              console.log(`No allocation data found for user ${user.id}, keeping original data`)
+              return user
+            }
+          })
+          
+          console.log('Final updated project users:', updatedUsers)
+          return updatedUsers
+        })
       } else {
+        console.log('No allocation data received, keeping current users')
         setWeeklyAllocations([])
       }
     } catch (error) {
@@ -303,9 +408,396 @@ export default function ProjectOwner() {
     setSelectedPeriod(prev => ({ ...prev, week: week }))
   }
 
-  // Handle project selection
+  // Check if a week is editable (not in the past)
+  const isWeekEditable = (weekNumber) => {
+    const currentWeek = getCurrentWeek()
+    return weekNumber >= currentWeek // Can edit current week and future weeks
+  }
+
+  // Copy from last week functionality
+  const copyFromLastWeek = async (targetWeek) => {
+    if (!selectedProject || targetWeek <= 1) return
+
+    const sourceWeek = targetWeek - 1
+    console.log(`Copying allocations from week ${sourceWeek} to week ${targetWeek} for project ${selectedProject.id}`)
+
+    try {
+      // Get all users in the current project
+      const allProjectUsers = filterTeamMembers(projectUsers)
+      console.log(`Found ${allProjectUsers.length} users in project to copy data for`)
+
+      if (allProjectUsers.length === 0) {
+        alert('No team members found in this project.')
+        return
+      }
+
+      // Confirm with user
+      const confirmed = confirm(`Are you sure you want to copy all users' data from Week ${sourceWeek} to Week ${targetWeek}? This will overwrite any existing data in Week ${targetWeek}.`)
+      if (!confirmed) {
+        console.log('Copy operation cancelled by user')
+        return
+      }
+
+      let successCount = 0
+      let errorCount = 0
+      const copyPromises = []
+
+      // Copy data for each user
+      for (const user of allProjectUsers) {
+        const sourceWeekKey = `week${sourceWeek}`
+        const sourceWeekData = user[sourceWeekKey]
+
+        // If user has data for source week, copy it
+        if (sourceWeekData && (sourceWeekData.billable > 0 || sourceWeekData.non_billable > 0 || sourceWeekData.leave > 0)) {
+          console.log(`Copying data for user ${user.id} from week ${sourceWeek}:`, sourceWeekData)
+
+          const weekInfo = getWeekDisplay(targetWeek, selectedPeriod.year)
+          const newAllocation = {
+            user_id: parseInt(user.id),
+            week: parseInt(targetWeek),
+            year: parseInt(selectedPeriod.year),
+            week_start: weekInfo.startDate,
+            billable_hrs: parseFloat(sourceWeekData.billable) || 0,
+            non_billable_hrs: parseFloat(sourceWeekData.non_billable) || 0,
+            leave_hrs: parseFloat(sourceWeekData.leave) || 0
+          }
+
+          // Use the proper create allocation API
+          const copyPromise = api.createAllocation(selectedProject.id, newAllocation)
+            .then(() => {
+              successCount++
+              console.log(`Successfully copied data for user ${user.id}`)
+            })
+            .catch((error) => {
+              errorCount++
+              console.error(`Failed to copy data for user ${user.id}:`, error)
+            })
+
+          copyPromises.push(copyPromise)
+        } else {
+          console.log(`No data to copy for user ${user.id} in week ${sourceWeek}`)
+        }
+      }
+
+      if (copyPromises.length === 0) {
+        alert(`No allocation data found for week ${sourceWeek} to copy from.`)
+        return
+      }
+
+      // Wait for all copy operations to complete
+      await Promise.all(copyPromises)
+
+      // Refresh the data to show the copied allocations
+      await loadProjectWeeklyAllocations(selectedProject.id)
+
+      // Show results
+      if (successCount > 0) {
+        alert(`Successfully copied data for ${successCount} users from Week ${sourceWeek} to Week ${targetWeek}!`)
+      }
+      
+      if (errorCount > 0) {
+        alert(`Warning: Failed to copy data for ${errorCount} users. Check console for details.`)
+      }
+
+    } catch (error) {
+      console.error('Error copying from last week:', error)
+      alert('Failed to copy allocations. Please try again.')
+    }
+  }
+
+  // ===== ALLOCATION EDITING FUNCTIONS =====
+
+  // Handle input change (real-time updates)
+  const handleAllocationChange = (userId, weekNumber, type, value) => {
+    // Handle empty string as 0, but preserve the string for display
+    const displayValue = value === '' ? '' : value
+    const numValue = value === '' ? 0 : parseFloat(value) || 0
+    
+    console.log(`handleAllocationChange: user=${userId}, week=${weekNumber}, type=${type}, value="${value}", numValue=${numValue}`)
+    
+    // Update the user data in projectUsers state
+    setProjectUsers(prevUsers => 
+      prevUsers.map(user => {
+        if (user.id === userId) {
+          const weekKey = `week${weekNumber}`
+          const updatedUser = { ...user }
+          
+          if (!updatedUser[weekKey]) {
+            updatedUser[weekKey] = { billable: 0, non_billable: 0, leave: 0, total: 0 }
+          }
+          
+          // Store the actual numeric value for calculations
+          updatedUser[weekKey] = {
+            ...updatedUser[weekKey],
+            [type]: numValue
+          }
+          
+          // Recalculate total
+          updatedUser[weekKey].total = 
+            (parseFloat(updatedUser[weekKey].billable) || 0) + 
+            (parseFloat(updatedUser[weekKey].non_billable) || 0) + 
+            (parseFloat(updatedUser[weekKey].leave) || 0)
+          
+          console.log(`Updated user ${userId} week ${weekNumber}:`, updatedUser[weekKey])
+          
+          return updatedUser
+        }
+        return user
+      })
+    )
+  }
+
+  // Handle input blur (save to database)
+  const handleAllocationBlur = async (userId, weekNumber, type, value) => {
+    if (!selectedProject) return
+
+    const user = projectUsers.find(u => u.id === userId)
+    if (!user) return
+
+    const weekKey = `week${weekNumber}`
+    const weekData = user[weekKey] || { billable: 0, non_billable: 0, leave: 0 }
+    
+    const billableHrs = parseFloat(weekData.billable) || 0
+    const nonBillableHrs = parseFloat(weekData.non_billable) || 0
+    const leaveHrs = parseFloat(weekData.leave) || 0
+
+    try {
+      // Check overallocation across ALL projects
+      const overallocationCheck = await checkOverallocation(userId, weekNumber, billableHrs, nonBillableHrs, leaveHrs)
+      
+      if (overallocationCheck.is_overallocated) {
+        // Store context for modal
+        setLastEditContext({
+          userId,
+          weekNumber,
+          type,
+          value,
+          billableHrs,
+          nonBillableHrs,
+          leaveHrs,
+          user
+        })
+        
+        // Show overallocation modal
+        await showOverallocationModalWithData(overallocationCheck, user, weekNumber)
+        return // Don't save yet, wait for user decision
+      }
+
+      // No overallocation, save directly
+      await saveAllocationToBackend(userId, weekNumber, billableHrs, nonBillableHrs, leaveHrs)
+      
+    } catch (error) {
+      console.error('Error handling allocation blur:', error)
+      alert('Failed to save allocation. Please try again.')
+    }
+  }
+
+  // Check overallocation across all projects
+  const checkOverallocation = async (userId, weekNumber, billableHrs, nonBillableHrs, leaveHrs) => {
+    try {
+      const params = new URLSearchParams({
+        user_id: userId,
+        week: weekNumber,
+        year: selectedPeriod.year,
+        current_project_id: selectedProject.id,
+        new_billable: billableHrs,
+        new_non_billable: nonBillableHrs,
+        new_leave: leaveHrs
+      })
+
+      const response = await get(`/allocation/check-overallocation?${params.toString()}`)
+      return response.data
+    } catch (error) {
+      console.error('Error checking overallocation:', error)
+      // Fallback to simple check
+      const total = billableHrs + nonBillableHrs + leaveHrs
+      return {
+        is_overallocated: total > 40,
+        new_total: total,
+        over_by: Math.max(0, total - 40),
+        allocations: []
+      }
+    }
+  }
+
+  // Show overallocation modal with data
+  const showOverallocationModalWithData = async (overallocationCheck, user, weekNumber) => {
+    const userName = `${user.firstname} ${user.lastname}`.trim()
+    const weekName = `Week ${weekNumber}`
+    
+    // Prepare modal data
+    const modalData = {
+      subtitle: `${userName} — ${weekName}: Total across ALL projects: ${overallocationCheck.new_total}h • Limit: 40h • Over by: ${overallocationCheck.over_by}h`,
+      allocations: overallocationCheck.allocations?.map(alloc => ({
+        ...alloc,
+        isCurrentProject: alloc.project_id === selectedProject.id
+      })) || [],
+      totalBillable: overallocationCheck.allocations?.reduce((sum, a) => sum + (parseFloat(a.billable_hrs) || 0), 0) || 0,
+      totalNonBillable: overallocationCheck.allocations?.reduce((sum, a) => sum + (parseFloat(a.non_billable_hrs) || 0), 0) || 0,
+      totalLeave: overallocationCheck.allocations?.reduce((sum, a) => sum + (parseFloat(a.leave_hrs) || 0), 0) || 0,
+      grandTotal: overallocationCheck.new_total
+    }
+    
+    setOverallocationData(modalData)
+    setShowOverallocationModal(true)
+  }
+
+  // Save allocation to backend
+  const saveAllocationToBackend = async (userId, weekNumber, billableHrs, nonBillableHrs, leaveHrs) => {
+    if (!selectedProject) {
+      throw new Error('No project selected')
+    }
+
+    try {
+      console.log(`Saving allocation for user ${userId}, week ${weekNumber}, year ${selectedPeriod.year}`)
+
+      // First, try to get existing allocation
+      const editableResponse = await get(`/projects/${selectedProject.id}/editable-allocations`)
+      const allocation = editableResponse.data.allocations.find(
+        a => a.user_id == userId && a.week == weekNumber && a.year == selectedPeriod.year
+      )
+
+      if (allocation) {
+        // Update existing allocation
+        console.log('Updating existing allocation:', allocation.id)
+        const updateData = {
+          billable_hrs: billableHrs,
+          non_billable_hrs: nonBillableHrs,
+          leave_hrs: leaveHrs
+        }
+        
+        const response = await api.updateAllocation(allocation.id, updateData)
+        console.log('Allocation updated successfully:', response)
+        
+      } else {
+        // Create new allocation
+        console.log('Creating new allocation')
+        const weekInfo = getWeekDisplay(weekNumber, selectedPeriod.year)
+        
+        const createData = {
+          user_id: parseInt(userId),
+          week: parseInt(weekNumber),
+          year: parseInt(selectedPeriod.year),
+          week_start: weekInfo.startDate,
+          billable_hrs: parseFloat(billableHrs) || 0,
+          non_billable_hrs: parseFloat(nonBillableHrs) || 0,
+          leave_hrs: parseFloat(leaveHrs) || 0
+        }
+        
+        const response = await api.createAllocation(selectedProject.id, createData)
+        console.log('Allocation created successfully:', response)
+      }
+
+      // Refresh data after save - with a small delay to ensure backend is updated
+      setTimeout(async () => {
+        await loadProjectWeeklyAllocations(selectedProject.id)
+      }, 500)
+      
+    } catch (error) {
+      console.error('Error saving allocation:', error)
+      throw error
+    }
+  }
+
+  // ===== OVERALLOCATION MODAL HANDLERS =====
+
+  const handleRevertOverallocation = () => {
+    if (lastEditContext) {
+      // Revert the change in UI
+      setProjectUsers(prevUsers => 
+        prevUsers.map(user => {
+          if (user.id === lastEditContext.userId) {
+            const weekKey = `week${lastEditContext.weekNumber}`
+            const updatedUser = { ...user }
+            
+            // Reset to previous values (before the change that caused overallocation)
+            if (updatedUser[weekKey]) {
+              // Remove the problematic change by setting back to 0 or previous value
+              updatedUser[weekKey] = {
+                ...updatedUser[weekKey],
+                [lastEditContext.type]: 0
+              }
+              
+              // Recalculate total
+              updatedUser[weekKey].total = 
+                (updatedUser[weekKey].billable || 0) + 
+                (updatedUser[weekKey].non_billable || 0) + 
+                (updatedUser[weekKey].leave || 0)
+            }
+            
+            return updatedUser
+          }
+          return user
+        })
+      )
+    }
+    
+    // Close modal
+    setShowOverallocationModal(false)
+    setLastEditContext(null)
+    setOverallocationData({})
+  }
+
+  const handleKeepOverallocation = async () => {
+    if (lastEditContext) {
+      try {
+        // Save the allocation despite overallocation
+        await saveAllocationToBackend(
+          lastEditContext.userId,
+          lastEditContext.weekNumber,
+          lastEditContext.billableHrs,
+          lastEditContext.nonBillableHrs,
+          lastEditContext.leaveHrs
+        )
+        
+        alert('Allocation saved successfully (overallocation allowed)')
+      } catch (error) {
+        console.error('Error saving overallocated allocation:', error)
+        alert('Failed to save allocation. Please try again.')
+      }
+    }
+    
+    // Close modal
+    setShowOverallocationModal(false)
+    setLastEditContext(null)
+    setOverallocationData({})
+  }
+
+  const handleViewBreakdown = async () => {
+    if (lastEditContext) {
+      try {
+        const params = new URLSearchParams({
+          user_id: lastEditContext.userId,
+          week: lastEditContext.weekNumber,
+          year: selectedPeriod.year
+        })
+
+        const response = await get(`/allocation/user-week-breakdown?${params.toString()}`)
+        console.log('Detailed breakdown:', response.data)
+        
+        // You can implement a detailed breakdown modal here if needed
+        alert('Detailed breakdown logged to console')
+        
+      } catch (error) {
+        console.error('Error getting detailed breakdown:', error)
+        alert('Failed to load detailed breakdown')
+      }
+    }
+  }
+
+  // Handle project selection with complete data refresh
   const handleProjectSelect = (project) => {
+    console.log('Selecting project:', project.name, 'ID:', project.id)
+    
+    // Clear all existing data to prevent cached data display
+    setProjectUsers([])
+    setWeeklyAllocations([])
+    setError(null)
+    
+    // Set the new selected project
     setSelectedProject(project)
+    
+    // Data will be loaded by useEffect when selectedProject changes
   }
 
   // Filter and sort projects
@@ -405,9 +897,15 @@ export default function ProjectOwner() {
                 <div
                   key={month}
                   onClick={() => handleMonthClick(month)}
-                  className={`time-item text-center py-2 px-1 rounded bg-gray-100 text-xs cursor-pointer hover:bg-gray-200 transition-colors ${
-                    isActive ? 'active' : ''
-                  } ${isCurrent ? 'current' : ''}`}
+                  className={`time-item text-center py-2 px-1 rounded text-xs cursor-pointer transition-all duration-200 ${
+                    isActive && isCurrent 
+                      ? 'bg-blue-500 text-white border-2 border-orange-400 border-solid' 
+                      : isActive 
+                      ? 'bg-blue-500 text-white' 
+                      : isCurrent 
+                      ? 'bg-orange-100 text-orange-800 border-2 border-orange-400 border-dashed'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
                 >
                   {getMonthName(month).substring(0, 3)}
                 </div>
@@ -431,9 +929,15 @@ export default function ProjectOwner() {
                 <div
                   key={weekNum}
                   onClick={() => handleWeekClick(weekNum)}
-                  className={`time-item text-center py-2 px-2 rounded bg-gray-100 cursor-pointer hover:bg-gray-200 transition-colors ${
-                    isActive ? 'active' : ''
-                  } ${isCurrent ? 'current' : ''}`}
+                  className={`time-item text-center py-2 px-2 rounded cursor-pointer transition-all duration-200 ${
+                    isActive && isCurrent 
+                      ? 'bg-blue-500 text-white border-2 border-orange-400 border-solid' 
+                      : isActive 
+                      ? 'bg-blue-500 text-white' 
+                      : isCurrent 
+                      ? 'bg-orange-100 text-orange-800 border-2 border-orange-400 border-dashed'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
                 >
                   <div className="text-xs font-medium">{weekInfo.display}</div>
                   <div className="text-xs text-gray-500">{weekInfo.dates}</div>
@@ -460,7 +964,7 @@ export default function ProjectOwner() {
         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
           <i className="fas fa-table mr-2 text-purple-600"></i>My Projects — List View
         </h3>
-        
+
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
           <div className="flex-1">
             <label className="text-sm font-medium text-gray-700 mb-1 block">Search</label>
@@ -552,7 +1056,9 @@ export default function ProjectOwner() {
                 </tr>
               ) : (
                 paginatedProjects.map((project) => (
-                  <tr key={project.id || project.project_id || `project-${Math.random()}`} className="hover:bg-gray-50">
+                  <tr key={project.id || project.project_id || `project-${Math.random()}`} className={`hover:bg-gray-50 ${
+                    selectedProject?.id === project.id ? 'bg-purple-50 border-l-4 border-purple-500' : ''
+                  }`}>
                     <td className="px-3 py-2 text-sm font-medium text-gray-900">{project.name || project.project_name || 'N/A'}</td>
                     <td className="px-3 py-2 text-sm text-gray-500">{project.description ? project.description.substring(0, 30) + '...' : 'N/A'}</td>
                     <td className="px-3 py-2 text-sm text-right text-green-600 font-medium">0%</td>
@@ -566,8 +1072,8 @@ export default function ProjectOwner() {
                         onClick={() => handleProjectSelect(project)}
                         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                           selectedProject?.id === project.id
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                            ? 'bg-purple-600 text-white border border-purple-700 shadow-md'
+                            : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300'
                         }`}
                       >
                         {selectedProject?.id === project.id ? 'Selected' : 'Select'}
@@ -647,27 +1153,46 @@ export default function ProjectOwner() {
       {/* Weekly Allocation Table */}
       {selectedProject && (
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="week-header px-6 py-3 sticky top-0">
+                  <div className="week-header px-6 py-3 sticky top-0">
+          <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold flex items-center">
               <i className="fas fa-users-cog mr-2"></i>
               Team Member Allocation - {getMonthName(selectedPeriod.month)} {selectedPeriod.year}
               <span className="ml-2 text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full">Weekly Breakdown</span>
             </h3>
+            <button
+              onClick={() => selectedProject && loadProjectWeeklyAllocations(selectedProject.id)}
+              className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors flex items-center"
+              disabled={!selectedProject}
+            >
+              <i className="fas fa-sync-alt mr-1"></i>
+              Refresh Data
+            </button>
           </div>
+        </div>
 
           <div className="overflow-x-auto max-h-[28rem] relative">
+            {/* Loading overlay for project data */}
+            {projectDataLoading && (
+              <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
+                <div className="text-center">
+                  <i className="fas fa-spinner fa-spin text-purple-600 text-2xl mb-2"></i>
+                  <p className="text-sm text-gray-600">Loading project data...</p>
+                </div>
+              </div>
+            )}
             <table className="min-w-full divide-y divide-gray-200 table-fixed border-separate border-spacing-0" style={{ isolation: 'isolate' }}>
               <colgroup>
                 <col style={{ width: 'var(--col-member)' }} />
                 <col style={{ width: 'var(--col-role)' }} />
                 {/* Dynamic columns for weeks */}
-                {displayWeeks.map(() => (
-                  <>
+                {displayWeeks.map((weekNumber, index) => (
+                  <React.Fragment key={weekNumber}>
                     <col style={{ width: 'var(--col-bill)' }} />
                     <col style={{ width: 'var(--col-non)' }} />
                     <col style={{ width: 'var(--col-leave)' }} />
                     <col style={{ width: 'var(--col-total)' }} />
-                  </>
+                  </React.Fragment>
                 ))}
                 {/* Sum columns */}
                 <col style={{ width: 'var(--col-bill)' }} />
@@ -700,12 +1225,12 @@ export default function ProjectOwner() {
                       >
                         <div className="flex flex-col items-center">
                           <div>{weekInfo.display}</div>
-                          {isCurrentWeek && (
+                          {weekNumber === selectedPeriod.week && weekNumber > 1 && isWeekEditable(weekNumber) && (
                             <button 
-                              onClick={() => {/* TODO: Implement copy last week */}}
+                              onClick={() => copyFromLastWeek(weekNumber)}
                               className="mt-1 px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
                             >
-                              Copy Last Week
+                              Copy from Week {weekNumber - 1}
                             </button>
                           )}
                         </div>
@@ -819,12 +1344,14 @@ export default function ProjectOwner() {
                         {/* Weekly allocation cells */}
                         {displayWeeks.map((weekNumber) => {
                           const isCurrentWeek = weekNumber === getCurrentWeek()
+                          const isEditable = isWeekEditable(weekNumber)
                           const weekKey = `week${weekNumber}`
-                          const weekData = user[weekKey]
+                          const weekData = user[weekKey] || { billable: 0, non_billable: 0, leave: 0, total: 0 }
                           
-                          const billableHrs = weekData ? parseFloat(weekData.billable) || 0 : 0
-                          const nonBillableHrs = weekData ? parseFloat(weekData.non_billable) || 0 : 0
-                          const leaveHrs = weekData ? parseFloat(weekData.leave) || 0 : 0
+                          // Ensure we get numbers, not strings
+                          const billableHrs = parseFloat(weekData.billable) || 0
+                          const nonBillableHrs = parseFloat(weekData.non_billable) || 0
+                          const leaveHrs = parseFloat(weekData.leave) || 0
                           const totalHrs = billableHrs + nonBillableHrs + leaveHrs
                           
                           // Add to sums
@@ -833,46 +1360,67 @@ export default function ProjectOwner() {
                           leaveSum += leaveHrs
                           
                           return (
-                            <>
+                            <React.Fragment key={`${user.id}-week-${weekNumber}`}>
                               {/* Billable hours */}
                               <td className={`px-1 py-3 text-center text-xs allocation-cell ${
                                 isCurrentWeek ? 'bg-orange-50' : ''
-                              }`}>
+                              } ${!isEditable ? 'bg-gray-100' : ''}`}>
                                 <input
                                   type="number"
                                   min="0"
                                   max="40"
                                   value={billableHrs}
-                                  onChange={(e) => {/* TODO: Implement allocation update */}}
-                                  className="w-16 text-center border border-gray-300 rounded px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  onChange={(e) => handleAllocationChange(user.id, weekNumber, 'billable', e.target.value)}
+                                  onBlur={(e) => handleAllocationBlur(user.id, weekNumber, 'billable', e.target.value)}
+                                  disabled={!isEditable}
+                                  className={`w-16 text-center border rounded px-2 py-1 text-sm ${
+                                    isEditable 
+                                      ? 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
+                                      : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                                  }`}
+                                  title={!isEditable ? `Week ${weekNumber} is in the past and cannot be edited` : ''}
                                 />
                               </td>
                               
                               {/* Non-billable hours */}
                               <td className={`px-1 py-3 text-center text-xs allocation-cell ${
                                 isCurrentWeek ? 'bg-orange-50' : ''
-                              }`}>
+                              } ${!isEditable ? 'bg-gray-100' : ''}`}>
                                 <input
                                   type="number"
                                   min="0"
                                   max="40"
                                   value={nonBillableHrs}
-                                  onChange={(e) => {/* TODO: Implement allocation update */}}
-                                  className="w-16 text-center border border-gray-300 rounded px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  onChange={(e) => handleAllocationChange(user.id, weekNumber, 'non_billable', e.target.value)}
+                                  onBlur={(e) => handleAllocationBlur(user.id, weekNumber, 'non_billable', e.target.value)}
+                                  disabled={!isEditable}
+                                  className={`w-16 text-center border rounded px-2 py-1 text-sm ${
+                                    isEditable 
+                                      ? 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
+                                      : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                                  }`}
+                                  title={!isEditable ? `Week ${weekNumber} is in the past and cannot be edited` : ''}
                                 />
                               </td>
                               
                               {/* Leave hours */}
                               <td className={`px-1 py-3 text-center text-xs allocation-cell ${
                                 isCurrentWeek ? 'bg-orange-50' : ''
-                              }`}>
+                              } ${!isEditable ? 'bg-gray-100' : ''}`}>
                                 <input
                                   type="number"
                                   min="0"
                                   max="40"
                                   value={leaveHrs}
-                                  onChange={(e) => {/* TODO: Implement allocation update */}}
-                                  className="w-16 text-center border border-gray-300 rounded px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  onChange={(e) => handleAllocationChange(user.id, weekNumber, 'leave', e.target.value)}
+                                  onBlur={(e) => handleAllocationBlur(user.id, weekNumber, 'leave', e.target.value)}
+                                  disabled={!isEditable}
+                                  className={`w-16 text-center border rounded px-2 py-1 text-sm ${
+                                    isEditable 
+                                      ? 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
+                                      : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                                  }`}
+                                  title={!isEditable ? `Week ${weekNumber} is in the past and cannot be edited` : ''}
                                 />
                               </td>
                               
@@ -882,7 +1430,7 @@ export default function ProjectOwner() {
                               }`}>
                                 {totalHrs}
                               </td>
-                            </>
+                            </React.Fragment>
                           )
                         })}
                         
@@ -915,6 +1463,74 @@ export default function ProjectOwner() {
           <i className="fas fa-folder-open text-4xl text-gray-300 mb-4"></i>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Project Selected</h3>
           <p className="text-gray-600">Please select a project from the list above to view allocations and insights.</p>
+        </div>
+      )}
+
+      {/* Overallocation Modal */}
+      {showOverallocationModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6">
+            <h3 className="text-lg font-semibold mb-1">⚠ Overallocation</h3>
+            <p className="text-sm text-gray-600 mb-4">{overallocationData.subtitle}</p>
+            
+            <div className="overflow-x-auto border rounded-lg mb-4">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Project</th>
+                    <th className="px-3 py-2 text-right">Billable</th>
+                    <th className="px-3 py-2 text-right">Non-Bill.</th>
+                    <th className="px-3 py-2 text-right">Leaves</th>
+                    <th className="px-3 py-2 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {overallocationData.allocations?.map((alloc, index) => (
+                    <tr key={index} className={alloc.isCurrentProject ? 'bg-amber-50' : ''}>
+                      <td className="px-3 py-2">
+                        {alloc.isCurrentProject ? '▶ ' : ''}{alloc.project_name}
+                        {alloc.isCurrentProject ? ' (Updated)' : ''}
+                      </td>
+                      <td className="px-3 py-2 text-right">{alloc.billable_hrs || 0}</td>
+                      <td className="px-3 py-2 text-right">{alloc.non_billable_hrs || 0}</td>
+                      <td className="px-3 py-2 text-right">{alloc.leave_hrs || 0}</td>
+                      <td className="px-3 py-2 text-right font-semibold">{alloc.total_hours}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-gray-100 border-t-2 border-gray-300">
+                    <td className="px-3 py-2 font-semibold">TOTAL ACROSS ALL PROJECTS</td>
+                    <td className="px-3 py-2 text-right font-semibold">{overallocationData.totalBillable}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{overallocationData.totalNonBillable}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{overallocationData.totalLeave}</td>
+                    <td className="px-3 py-2 text-right font-bold text-lg text-red-600">{overallocationData.grandTotal}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <button 
+                onClick={handleViewBreakdown}
+                className="px-3 py-2 rounded border border-amber-600 text-amber-700 hover:bg-amber-50"
+              >
+                View Breakdown
+              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleRevertOverallocation}
+                  className="px-3 py-2 rounded border border-gray-300 hover:bg-gray-50"
+                >
+                  Revert
+                </button>
+                <button 
+                  onClick={handleKeepOverallocation}
+                  className="px-3 py-2 rounded bg-amber-600 text-white hover:bg-amber-700"
+                >
+                  Keep Anyway
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

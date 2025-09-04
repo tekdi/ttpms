@@ -1,248 +1,501 @@
-# TPPMS React Frontend
+# TPPMS React Frontend 🚀
 
-A complete React-based frontend for the Team Project & People Management System (TPPMS), built to work exactly like the HTML frontend with enhanced functionality and modern UI components.
+Team Project & People Management System - Modern React Frontend with Docker deployment
 
-## 🚀 Features
+## 📋 Table of Contents
 
-### ✅ Complete Authentication System
-- **Email/Password Login**: Traditional login with backend API integration
-- **Google OAuth Integration**: Full Google Sign-In support with automatic role detection
-- **Session Management**: Secure session handling with automatic role-based routing
-- **Role-Based Access Control**: Automatic redirection based on user roles (Admin, Project Owner, Team Member)
+- [Quick Start](#-quick-start)
+- [Environment Configuration](#-environment-configuration)
+- [Development Setup](#-development-setup)
+- [Production Deployment](#-production-deployment)
+- [API Configuration](#-api-configuration)
+- [Features](#-features)
+- [Security](#-security)
+- [Troubleshooting](#-troubleshooting)
 
-### ✅ Comprehensive Admin Dashboard
-- **Bench Summary**: Real-time bench analytics with charts and metrics
-- **User Management**: Complete user overview with active, new, and inactive users
-- **Project Management**: Project status tracking and management
-- **Data Visualization**: Interactive charts using Chart.js
-- **CSV Export**: Download functionality for bench summary data
-
-### ✅ Project Owner Dashboard
-- **Project List View**: Comprehensive project overview with allocation percentages
-- **Time Allocation Management**: Editable weekly time allocation tables
-- **Project Selection**: Interactive project selection and management
-- **Copy Last Week**: Functionality to copy previous week's allocations
-
-### ✅ Team Member Dashboard
-- **Time Allocation View**: Weekly breakdown of project time allocations
-- **Project Overview**: List of assigned projects with roles
-- **Summary Dashboard**: Visual summary with metrics and weekly overview
-- **Responsive Tables**: Sticky columns and mobile-friendly design
-
-### ✅ Advanced Time Selection
-- **Smart Period Detection**: Automatic current period highlighting
-- **Week Calculations**: Dynamic week calculation based on month/year
-- **Visual Indicators**: Current period highlighting with color coding
-- **Interactive Selection**: Click-based month and week selection
-
-### ✅ Modern UI/UX
-- **Responsive Design**: Mobile-first responsive layout
-- **Tailwind CSS**: Modern utility-first CSS framework
-- **Font Awesome Icons**: Professional icon set throughout the application
-- **Smooth Animations**: CSS transitions and hover effects
-- **Professional Styling**: Consistent design language matching the HTML frontend
-
-## 🛠️ Technology Stack
-
-- **React 18**: Latest React with hooks and modern patterns
-- **React Router**: Client-side routing with protected routes
-- **Tailwind CSS**: Utility-first CSS framework
-- **Chart.js**: Interactive charts and data visualization
-- **Font Awesome**: Professional icon library
-- **Vite**: Fast build tool and development server
-
-## 📁 Project Structure
-
-```
-src/
-├── components/
-│   ├── AdminDashboard.jsx    # Admin dashboard with charts
-│   ├── Navbar.jsx            # Navigation with role-based menu
-│   └── TimeSelector.jsx      # Advanced time period selection
-├── pages/
-│   ├── Admin.jsx             # Complete admin interface
-│   ├── Login.jsx             # Authentication with Google OAuth
-│   ├── ProjectOwner.jsx      # Project owner dashboard
-│   └── TeamMember.jsx        # Team member interface
-├── utils/
-│   ├── api.js                # Backend API integration
-│   └── csv.js                # CSV export functionality
-├── App.jsx                   # Main application with routing
-└── index.css                 # Global styles and custom CSS
-```
-
-## 🔧 Installation & Setup
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 16+ and npm
-- Backend server running on `http://127.0.0.1:8000`
+- Docker and Docker Compose installed
+- Backend API running (see backend README.md)
+- Node.js 18+ (for local development)
 
-### Setup Steps
-1. **Clone and Install Dependencies**
-   ```bash
-   cd tppms-react
-   npm install
-   ```
+### 1. Environment Setup
+```bash
+# Copy environment template
+cp env.example .env
 
-2. **Start Development Server**
-   ```bash
-   npm run dev
-   ```
+# Edit environment variables (REQUIRED)
+nano .env
+```
 
-3. **Build for Production**
-   ```bash
-   npm run build
-   ```
+**⚠️ Important**: Update the following variables in your `.env` file:
+- `VITE_API_BASE_URL` - Your backend API URL
+- `VITE_GOOGLE_CLIENT_ID` - Your Google OAuth Client ID
 
-## 🌐 API Integration
+### 2. Deploy (Production)
+```bash
+# Production deployment
+docker-compose up --build -d
 
-The React frontend integrates with the TPPMS backend APIs:
+# Check status
+docker-compose ps
+docker-compose logs -f
+```
 
-### Authentication Endpoints
+### 3. Access Application
+- **Production**: http://localhost:3000
+- **Development**: http://localhost:5173
+- **Health Check**: http://localhost:3000/health
+
+## 🔧 Environment Configuration
+
+### Required Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `VITE_API_BASE_URL` | Backend API URL | `http://localhost:8000/api` |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth Client ID | `your-client-id.apps.googleusercontent.com` |
+| `VITE_APP_NAME` | Application name | `"TPPMS"` |
+| `VITE_APP_DESCRIPTION` | App description | `"Team Project & People Management System"` |
+| `VITE_APP_VERSION` | Application version | `"1.0.0"` |
+
+### Deployment Configuration
+
+| Variable | Description | Options |
+|----------|-------------|---------|
+| `DEPLOY_TARGET` | Deployment mode | `development`, `production` |
+| `FRONTEND_PORT` | External port | `3000`, `5173` |
+| `CONTAINER_NAME` | Container name | `tppms-frontend` |
+
+### Environment Examples
+
+#### Development (.env)
+```bash
+DEPLOY_TARGET=development
+FRONTEND_PORT=5173
+INTERNAL_PORT=5173
+VITE_DEBUG_MODE=true
+VITE_ENABLE_CONSOLE_LOGS=true
+VITE_API_BASE_URL=http://localhost:8000/api
+VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+```
+
+#### Production (.env)
+```bash
+DEPLOY_TARGET=production
+FRONTEND_PORT=3000
+INTERNAL_PORT=80
+VITE_DEBUG_MODE=false
+VITE_ENABLE_CONSOLE_LOGS=false
+VITE_API_BASE_URL=https://api.yourdomain.com/api
+VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+```
+
+## 💻 Development Setup
+
+### Local Development (Without Docker)
+```bash
+# Install dependencies
+npm install
+
+# Copy environment file
+cp env.example .env
+
+# Edit .env with your configuration
+nano .env
+
+# Start development server
+npm run dev
+```
+
+### Docker Development
+```bash
+# Set development mode in .env
+DEPLOY_TARGET=development
+FRONTEND_PORT=5173
+INTERNAL_PORT=5173
+
+# Start development container
+docker-compose up --build
+
+# View logs
+docker-compose logs -f tppms-frontend
+```
+
+### Development Features
+- ✅ Hot reload enabled
+- ✅ Debug mode active
+- ✅ Console logging enabled
+- ✅ Source maps available
+- ✅ Volume mounting for live code changes
+
+### Development Commands
+```bash
+# View logs
+docker-compose logs -f tppms-frontend
+
+# Access container shell
+docker-compose exec tppms-frontend sh
+
+# Rebuild container
+docker-compose up --build --force-recreate
+
+# Run tests (if available)
+npm test
+```
+
+## 🏭 Production Deployment
+
+### Local Production
+```bash
+# Set production mode in .env
+DEPLOY_TARGET=production
+FRONTEND_PORT=3000
+VITE_DEBUG_MODE=false
+
+# Deploy
+docker-compose up --build -d
+```
+
+### Server Deployment
+```bash
+# 1. Clone repository
+git clone https://github.com/tekdi/ttpms.git
+cd ttpms/frontend
+
+# 2. Configure environment
+cp env.example .env
+# Edit .env with production values
+
+# 3. Deploy
+docker-compose up --build -d
+
+# 4. Setup reverse proxy (nginx/traefik)
+# 5. Configure SSL certificate
+```
+
+### Production Optimizations
+- ✅ Multi-stage Docker build
+- ✅ Nginx static file serving
+- ✅ Gzip compression enabled
+- ✅ Security headers configured
+- ✅ Health check endpoint
+- ✅ Minimal image size (~50MB)
+
+## 🔗 API Configuration
+
+### Backend Connection
+
+The frontend connects to the backend API using the `VITE_API_BASE_URL` environment variable.
+
+#### Local Development
+```bash
+VITE_API_BASE_URL=http://localhost:8000/api
+```
+
+#### Production
+```bash
+VITE_API_BASE_URL=https://api.yourdomain.com/api
+```
+
+### Required Backend Endpoints
+
+The frontend expects these API endpoints to be available:
+
+#### Authentication
 - `POST /api/auth/login` - User login
 - `POST /api/auth/logout` - User logout
-- `GET /api/auth/me` - Current user info
+- `GET /api/auth/me` - Get current user
 
-### Admin Endpoints
-- `GET /api/admin/dashboard-summary` - Admin dashboard data
-- `GET /api/admin/user-counts` - User statistics
-- `GET /api/admin/users/*` - User management
-- `GET /api/admin/projects/*` - Project management
+#### Projects
+- `GET /api/projects/my-po-projects-simple` - Get user projects
+- `GET /api/projects/{id}/users` - Get project users
+- `GET /api/projects/{id}/weekly-allocations` - Get allocations
 
-### Project & Allocation Endpoints
-- `GET /api/projects/my-projects` - User's projects
-- `GET /api/projects/my-po-projects` - Project owner projects
-- `GET /api/projects/*/editable-allocations` - Editable allocations
-- `PUT /api/allocations/*` - Update allocations
+#### Allocations
+- `POST /api/projects/{id}/create-allocation` - Create allocation
+- `PUT /api/allocations/{id}` - Update allocation
+- `GET /api/allocation/check-overallocation` - Check overallocation
 
-### Bench Management
-- `GET /api/bench/summary` - Bench summary
-- `GET /api/bench/fully-benched` - Fully benched users
-- `GET /api/bench/partial-benched` - Partially benched users
+#### Admin (if admin features enabled)
+- `GET /api/admin/dashboard-summary` - Admin dashboard
+- `GET /api/bench/summary` - Bench summary report
 
-## 🔐 Authentication Flow
+### API Authentication
 
-1. **Login Process**
-   - User enters email/password or uses Google OAuth
-   - Backend validates credentials and returns user data
-   - Frontend stores session and user information
-   - Automatic role detection and routing
+The frontend uses session-based authentication with the `X-Session-ID` header:
 
-2. **Role-Based Routing**
-   - **Admin**: `/admin` - Full admin dashboard
-   - **Project Owner**: `/po` - Project management interface
-   - **Team Member**: `/team` - Time allocation view
+```javascript
+// Automatic header injection
+headers: {
+  'X-Session-ID': sessionStorage.getItem('sessionId')
+}
+```
 
-3. **Session Management**
-   - Session ID stored in sessionStorage
-   - Automatic API authentication
-   - Secure logout with session cleanup
+## ✨ Features
 
-## 📊 Data Visualization
+### Core Features
+- 🔐 **Session-based Authentication** - Secure login with Google OAuth support
+- 👥 **Role-based Access Control** - Admin, Project Owner, Team Member roles
+- 📊 **Project Management** - Create, view, and manage projects
+- ⏰ **Time Tracking** - Weekly allocation tracking and reporting
+- 📈 **Dashboard Analytics** - Real-time insights and summaries
+- 📱 **Responsive Design** - Mobile-friendly interface
 
-### Admin Dashboard Charts
-- **Bench Summary Bar Chart**: Visual representation of bench status
-- **User Distribution Doughnut Chart**: User status breakdown
-- **Project Status Chart**: Project lifecycle overview
+### User Roles
 
-### Interactive Elements
-- **Real-time Updates**: Live data from backend APIs
-- **Responsive Charts**: Mobile-friendly chart components
-- **Data Export**: CSV download functionality
+#### Admin
+- View system-wide dashboard
+- Manage all projects and users
+- Access bench summary reports
+- System configuration
 
-## 🎨 UI Components
+#### Project Owner
+- Manage assigned projects
+- Allocate team members to projects
+- Track weekly allocations
+- View project analytics
 
-### Time Selector
-- **Smart Period Detection**: Automatic current period highlighting
-- **Interactive Selection**: Click-based month and week selection
-- **Visual Feedback**: Color-coded current and selected periods
+#### Team Member
+- View assigned projects
+- Track personal time allocations
+- Submit weekly reports
+- View personal dashboard
 
-### Navigation
-- **Role-Based Menu**: Dynamic navigation based on user role
-- **User Profile**: User information and logout functionality
-- **Mobile Responsive**: Collapsible mobile navigation
+### Technical Features
+- ⚡ **Vite Build System** - Fast development and optimized builds
+- 🎨 **Tailwind CSS** - Modern, utility-first styling
+- 🔄 **Real-time Updates** - Live data synchronization
+- 📦 **Component Architecture** - Reusable React components
+- 🚀 **Performance Optimized** - Code splitting and lazy loading
 
-### Tables
-- **Sticky Columns**: Fixed first column for better UX
-- **Responsive Design**: Mobile-friendly table layouts
-- **Hover Effects**: Interactive row highlighting
+## 🔒 Security
 
-## 🚀 Key Improvements Over HTML Frontend
+### Production Security Features
+- ✅ Security headers configured
+- ✅ Content Security Policy (CSP)
+- ✅ Non-root user in container
+- ✅ Minimal attack surface
+- ✅ No sensitive data in logs
+- ✅ Environment variable validation
 
-1. **Enhanced User Experience**
-   - Single-page application (SPA) with smooth transitions
-   - Real-time data updates without page refreshes
-   - Interactive charts and data visualization
+### Security Best Practices
+1. **Environment Variables**: Never commit `.env` files to version control
+2. **HTTPS**: Use SSL/TLS in production
+3. **API Keys**: Rotate Google OAuth client ID regularly
+4. **Dependencies**: Keep dependencies updated
+5. **Monitoring**: Monitor for security vulnerabilities
 
-2. **Better Performance**
-   - Component-based architecture for efficient rendering
-   - Optimized API calls with proper error handling
-   - Lazy loading and code splitting capabilities
+### Google OAuth Setup
 
-3. **Modern Development**
-   - Type-safe development with proper error handling
-   - Component reusability and maintainability
-   - Modern React patterns and best practices
+1. **Create Google OAuth App**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing
+   - Enable Google+ API
+   - Create OAuth 2.0 credentials
 
-4. **Enhanced Functionality**
-   - Advanced time period selection with visual indicators
-   - Comprehensive admin dashboard with charts
-   - Better project management interface
-
-## 🔒 Security Features
-
-- **Session Management**: Secure session handling
-- **Role-Based Access**: Protected routes based on user roles
-- **API Security**: Proper authentication headers
-- **Input Validation**: Client-side and server-side validation
-
-## 📱 Responsive Design
-
-- **Mobile-First**: Optimized for mobile devices
-- **Tablet Support**: Responsive layouts for tablets
-- **Desktop Experience**: Full-featured desktop interface
-- **Touch-Friendly**: Optimized for touch interactions
-
-## 🧪 Testing
-
-The application has been tested for:
-- ✅ Authentication flows (email/password and Google OAuth)
-- ✅ Role-based routing and access control
-- ✅ API integration with backend services
-- ✅ Responsive design across devices
-- ✅ Data visualization and chart functionality
-- ✅ CSV export functionality
-- ✅ Time period selection and management
-
-## 🚀 Getting Started
-
-1. **Start the Backend Server**
+2. **Configure OAuth**:
    ```bash
-   cd backend
-   python main.py
+   # Add to .env
+   VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
    ```
 
-2. **Start the React Frontend**
-   ```bash
-   cd tppms-react
-   npm run dev
-   ```
+3. **Set Authorized Origins**:
+   - Development: `http://localhost:5173`, `http://localhost:3000`
+   - Production: `https://yourdomain.com`
 
-3. **Access the Application**
-   - Open `http://localhost:5173` in your browser
-   - Login with test credentials or Google OAuth
-   - Navigate based on your user role
+## 🔍 Troubleshooting
 
-## 📝 Test Credentials
+### Common Issues
 
-- **Email**: `bhavesh.korane@tekditechnologies.com`
-- **Password**: Any password (ignored by backend)
-- **Default Role**: Team Member (auto-detected based on actual roles)
+#### 1. Container Won't Start
+```bash
+# Check logs
+docker-compose logs tppms-frontend
 
-## 🤝 Contributing
+# Common causes:
+# - Missing required environment variables
+# - Port already in use
+# - Docker daemon not running
+```
 
-This React frontend is designed to be a complete replacement for the HTML frontend while maintaining all functionality and improving the user experience. All components are built with modern React patterns and are fully compatible with the existing backend APIs.
+#### 2. API Connection Failed
+```bash
+# Check API URL in .env
+echo $VITE_API_BASE_URL
+
+# Test API connectivity
+curl http://localhost:8000/api/health
+
+# Check network connectivity
+docker-compose exec tppms-frontend ping backend
+```
+
+#### 3. Build Failures
+```bash
+# Clean build cache
+docker system prune -f
+
+# Rebuild from scratch
+docker-compose build --no-cache
+
+# Check environment variables
+docker-compose config
+```
+
+#### 4. Environment Variables Not Working
+```bash
+# Verify .env file exists
+ls -la .env
+
+# Check environment loading
+docker-compose exec tppms-frontend env | grep VITE_
+
+# Rebuild after .env changes
+docker-compose up --build --force-recreate
+```
+
+#### 5. Google OAuth Issues
+```bash
+# Check client ID configuration
+echo $VITE_GOOGLE_CLIENT_ID
+
+# Verify authorized origins in Google Console
+# Development: http://localhost:5173, http://localhost:3000
+# Production: https://yourdomain.com
+```
+
+### Debug Commands
+
+```bash
+# View container status
+docker-compose ps
+
+# View real-time logs
+docker-compose logs -f
+
+# Access container shell
+docker-compose exec tppms-frontend sh
+
+# Test health endpoint
+curl http://localhost:3000/health
+
+# View environment variables
+docker-compose exec tppms-frontend env | grep VITE_
+```
+
+### Performance Issues
+
+```bash
+# Check resource usage
+docker stats tppms-frontend
+
+# Optimize for production
+VITE_DEBUG_MODE=false
+VITE_ENABLE_CONSOLE_LOGS=false
+
+# Enable nginx caching
+# (Already configured in production build)
+```
+
+## 📊 Monitoring
+
+### Health Checks
+```bash
+# Built-in health endpoint
+curl http://localhost:3000/health
+
+# Docker health check
+docker-compose ps
+# Should show "healthy" status
+```
+
+### Logs
+```bash
+# Application logs
+docker-compose logs -f tppms-frontend
+
+# Nginx access logs (production)
+docker-compose exec tppms-frontend tail -f /var/log/nginx/access.log
+
+# Nginx error logs (production)
+docker-compose exec tppms-frontend tail -f /var/log/nginx/error.log
+```
+
+## 📝 Development Notes
+
+### Project Structure
+```
+tppms-react/
+├── Dockerfile              # Multi-stage Docker build
+├── docker-compose.yml      # Container orchestration
+├── .env.example            # Environment template
+├── README.md               # This file
+├── src/
+│   ├── components/         # Reusable React components
+│   │   ├── AdminDashboard.jsx
+│   │   ├── GlobalNotification.jsx
+│   │   ├── Navbar.jsx
+│   │   └── ...
+│   ├── pages/              # Page components
+│   │   ├── Admin.jsx
+│   │   ├── Login.jsx
+│   │   ├── ProjectOwner.jsx
+│   │   └── TeamMember.jsx
+│   ├── config/             # Configuration files
+│   │   └── environment.js
+│   ├── utils/              # Utility functions
+│   │   ├── api.js
+│   │   ├── apiWithStatusHandling.js
+│   │   └── csv.js
+│   └── styles/             # CSS files
+└── scripts/                # Build and deployment scripts
+```
+
+### Key Technologies
+- **React 18** - Modern React with hooks
+- **Vite** - Fast build tool and dev server
+- **Tailwind CSS** - Utility-first CSS framework
+- **Chart.js** - Data visualization
+- **React Router** - Client-side routing
+- **Docker** - Containerization
+
+### Development Workflow
+1. Make changes to source code
+2. Hot reload shows changes instantly (development mode)
+3. Test changes locally
+4. Build and test production image
+5. Deploy to staging/production
+
+## 🆘 Need Help?
+
+### Quick Fixes
+1. **Check logs**: `docker-compose logs -f`
+2. **Verify environment**: `docker-compose config`
+3. **Test API**: `curl http://localhost:8000/api/health`
+4. **Rebuild**: `docker-compose up --build --force-recreate`
+
+### Support Resources
+- Backend setup: See `../backend/README.md`
+- Docker documentation: [docs.docker.com](https://docs.docker.com/)
+- React documentation: [reactjs.org](https://reactjs.org/)
+- Vite documentation: [vitejs.dev](https://vitejs.dev/)
+
+---
 
 ## 📄 License
 
-This project is part of the TPPMS system and follows the same licensing terms.
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+**Note**: This is a production-ready frontend application. Ensure all environment variables are properly configured before deploying to production environments.

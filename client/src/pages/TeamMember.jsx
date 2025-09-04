@@ -2,11 +2,48 @@ import React, { useState, useEffect } from 'react'
 import { api } from '../utils/api'
 
 export default function TeamMember() {
-  const [selectedPeriod, setSelectedPeriod] = useState({ year: 2025, month: 8, week: 32 })
+  // Get current corporate week (Monday-Friday) - moved to top
+  const getCurrentWeek = () => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const startOfYear = new Date(year, 0, 1)
+    
+    // Find first Monday of the year
+    const firstMonday = new Date(startOfYear)
+    while (firstMonday.getDay() !== 1) { // 1 = Monday
+      firstMonday.setDate(firstMonday.getDate() + 1)
+    }
+    
+    // Calculate week number
+    const diffTime = now.getTime() - firstMonday.getTime()
+    const diffWeeks = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7))
+    
+    return Math.max(1, diffWeeks)
+  }
+
+  // Initialize with current period
+  const getCurrentPeriod = () => {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth() + 1 // JavaScript months are 0-based
+    const currentWeek = getCurrentWeek()
+    return { year: currentYear, month: currentMonth, week: currentWeek }
+  }
+  
+  const [selectedPeriod, setSelectedPeriod] = useState(getCurrentPeriod())
   const [allocations, setAllocations] = useState([])
   const [myProjects, setMyProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // Summary statistics
+  const [summaryStats, setSummaryStats] = useState({
+    total: 0,
+    billable: 0,
+    nonBillable: 0,
+    leave: 0,
+    projects: 0
+  })
 
   useEffect(() => {
     loadData()
@@ -40,8 +77,12 @@ export default function TeamMember() {
         setMyProjects([])
       }
       
-      // Load allocations for current period
-      await loadUserAllocations()
+      // Load allocations for current period and get the data
+      const allocationsData = await loadUserAllocations()
+      
+      // Update summary stats after both projects and allocations are loaded
+      console.log('Updating summary stats after data load...')
+      updateSummaryStats(allocationsData || [], projectsData || [])
     } catch (error) {
       console.error('Error loading data:', error)
       setError('Failed to load data. Please try again.')
@@ -71,40 +112,94 @@ export default function TeamMember() {
       console.log('Allocation API response:', data)
       
       // The HTML frontend expects data.data.allocations
+      let allocationsData = []
       if (data && typeof data === 'object' && data.data?.allocations) {
-        const allocationsData = data.data.allocations
+        allocationsData = data.data.allocations
         console.log('Extracted allocations:', allocationsData)
         setAllocations(allocationsData)
       } else if (Array.isArray(data)) {
         // Fallback if direct array
+        allocationsData = data
         setAllocations(data)
       } else {
         console.warn('Unexpected allocation data format:', data)
         setAllocations([])
       }
+      
+      // Return the allocations data for use in loadData
+      return allocationsData
     } catch (error) {
       console.error('Error loading allocations:', error)
       setAllocations([])
+      return []
     }
   }
 
-  // Get current corporate week (Monday-Friday)
-  const getCurrentWeek = () => {
-    const now = new Date()
-    const year = now.getFullYear()
+  // Calculate and update summary statistics
+  const updateSummaryStats = (allocationsData, projectsData) => {
+    if (!allocationsData || allocationsData.length === 0) {
+      setSummaryStats({
+        total: 0,
+        billable: 0,
+        nonBillable: 0,
+        leave: 0,
+        projects: projectsData?.length || 0
+      })
+      return
+    }
+
+    // Calculate totals from allocations
+    const totalBillable = allocationsData.reduce((sum, a) => sum + (a.billable_hrs || 0), 0)
+    const totalNonBillable = allocationsData.reduce((sum, a) => sum + (a.non_billable_hrs || 0), 0)
+    const totalLeave = allocationsData.reduce((sum, a) => sum + (a.leave_hrs || 0), 0)
+    const totalHours = totalBillable + totalNonBillable + totalLeave
+
+    setSummaryStats({
+      total: totalHours,
+      billable: totalBillable,
+      nonBillable: totalNonBillable,
+      leave: totalLeave,
+      projects: projectsData?.length || 0
+    })
+
+    console.log('Summary updated:', { totalHours, totalBillable, totalNonBillable, totalLeave, projects: projectsData?.length || 0 })
+  }
+
+
+
+  // Get week display with dates - EXACTLY like PO page
+  const getWeekDisplay = (weekNumber, year) => {
+    // Calculate week start date (Monday)
     const startOfYear = new Date(year, 0, 1)
-    
-    // Find first Monday of the year
     const firstMonday = new Date(startOfYear)
-    while (firstMonday.getDay() !== 1) { // 1 = Monday
+    while (firstMonday.getDay() !== 1) {
       firstMonday.setDate(firstMonday.getDate() + 1)
     }
     
-    // Calculate week number
-    const diffTime = now.getTime() - firstMonday.getTime()
-    const diffWeeks = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7))
+    const weekStart = new Date(firstMonday)
+    weekStart.setDate(weekStart.getDate() + (weekNumber - 1) * 7)
     
-    return Math.max(1, diffWeeks)
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekStart.getDate() + 4) // Friday (5-day week)
+    
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    
+    const startMonth = monthNames[weekStart.getMonth()]
+    const endMonth = monthNames[weekEnd.getMonth()]
+    
+    if (startMonth === endMonth) {
+      return {
+        display: `Week ${weekNumber}`,
+        dates: `${startMonth} ${weekStart.getDate()}-${weekEnd.getDate()}`,
+        fullDisplay: `Week ${weekNumber} (${startMonth} ${weekStart.getDate()}-${weekEnd.getDate()})`
+      }
+    } else {
+      return {
+        display: `Week ${weekNumber}`,
+        dates: `${startMonth} ${weekStart.getDate()}-${endMonth} ${weekEnd.getDate()}`,
+        fullDisplay: `Week ${weekNumber} (${startMonth} ${weekStart.getDate()}-${endMonth} ${weekEnd.getDate()})`
+      }
+    }
   }
 
   // Get weeks for a specific month (corporate weeks - Monday-Friday based)
@@ -156,25 +251,7 @@ export default function TeamMember() {
     return months[month - 1]
   }
 
-  // Get week display info
-  const getWeekDisplay = (weekNumber, year, month) => {
-    const firstDay = new Date(year, month - 1, 1)
-    const firstWeekday = firstDay.getDay()
-    const startDate = new Date(year, month - 1, 1 + (weekNumber - 1) * 7 - firstWeekday)
-    const endDate = new Date(startDate)
-    endDate.setDate(startDate.getDate() + 6)
-    
-    const formatDate = (date) => {
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-      return `${monthNames[date.getMonth()]} ${date.getDate()}`
-    }
-    
-    return {
-      display: `Week ${weekNumber}`,
-      dates: `${formatDate(startDate)}-${formatDate(endDate)}`,
-      fullDisplay: `Week ${weekNumber} (${formatDate(startDate)}-${formatDate(endDate)})`
-    }
-  }
+
 
   const handleYearChange = (year) => {
     setSelectedPeriod(prev => ({ ...prev, year: parseInt(year) }))
@@ -208,28 +285,10 @@ export default function TeamMember() {
     return projectGroups
   }
 
-  // Calculate summary statistics
-  const getSummaryStats = () => {
-    if (!allocations || allocations.length === 0) {
-      return { total: 0, billable: 0, nonBillable: 0, leave: 0, projects: myProjects.length }
-    }
-    
-    const totalBillable = allocations.reduce((sum, a) => sum + (a.billable_hrs || 0), 0)
-    const totalNonBillable = allocations.reduce((sum, a) => sum + (a.non_billable_hrs || 0), 0)
-    const totalLeave = allocations.reduce((sum, a) => sum + (a.leave_hrs || 0), 0)
-    
-    return {
-      total: totalBillable + totalNonBillable + totalLeave,
-      billable: totalBillable,
-      nonBillable: totalNonBillable,
-      leave: totalLeave,
-      projects: myProjects.length
-    }
-  }
+
 
   const monthWeeks = getWeeksForMonth(selectedPeriod.year, selectedPeriod.month)
   const projectGroups = getProjectGroups()
-  const summaryStats = getSummaryStats()
 
   // Show error state
   if (error) {
@@ -255,7 +314,104 @@ export default function TeamMember() {
   }
 
   return (
-    <div className="space-y-6">
+    <>
+      {/* Add CSS styles to match HTML version exactly */}
+      <style>{`
+        :root {
+          --col-member: 280px;
+          --col-bill: 90px;
+          --col-non: 110px;
+          --col-leave: 80px;
+          --col-total: 80px;
+        }
+        
+        /* Stable table */
+        table { 
+          table-layout: fixed; 
+          border-collapse: separate; 
+          border-spacing: 0; 
+        }
+        
+        th, td { 
+          white-space: nowrap; 
+        }
+        
+        /* Fixed width for frozen column */
+        .sticky-project {
+          width: 280px;
+          max-width: 280px;
+          min-width: 280px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        /* Freeze the first column (Project & Role) */
+        .sticky-project {
+          position: sticky;
+          left: 0;
+          z-index: 10;
+          background: white;
+          border-right: 1px solid #e5e7eb;
+          box-shadow: 4px 0 0 #f9fafb, 6px 0 8px -6px rgba(0,0,0,.15);
+        }
+
+        /* Keep header row fixed with higher z-index */
+        thead .sticky-project {
+          position: sticky;
+          top: 0;
+          z-index: 20;
+          background: #f9fafb !important;
+        }
+        
+        /* Ensure header cells always stay visible */
+        thead th {
+          position: sticky;
+          top: 0;
+          z-index: 15;
+          background: #f9fafb !important;
+        }
+        
+        tbody td { 
+          background: #fff; 
+        }
+        
+        .week-header {
+          background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+          color: #fff;
+          font-weight: 600;
+        }
+        
+        /* Current week highlighting */
+        .current-week-header {
+          background: linear-gradient(135deg, #f97316, #ea580c) !important;
+          color: #fff;
+        }
+        .current-week-cell {
+          background: #fff7ed !important;
+        }
+        
+        /* Table borders and spacing */
+        .allocation-table {
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          overflow: hidden;
+        }
+        .allocation-table th,
+        .allocation-table td {
+          border-right: 1px solid #e5e7eb;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .allocation-table th:last-child,
+        .allocation-table td:last-child {
+          border-right: none;
+        }
+        .allocation-table tr:last-child td {
+          border-bottom: none;
+        }
+      `}</style>
+      
+      <div className="space-y-6">
       {/* Time Period Selection - EXACTLY like HTML frontend */}
       <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">
@@ -312,7 +468,7 @@ export default function TeamMember() {
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {monthWeeks.map(weekNum => {
-              const weekInfo = getWeekDisplay(weekNum, selectedPeriod.year, selectedPeriod.month)
+              const weekInfo = getWeekDisplay(weekNum, selectedPeriod.year)
               const isActive = weekNum === selectedPeriod.week
               const isCurrent = weekNum === getCurrentWeek() && selectedPeriod.month === new Date().getMonth() + 1 && selectedPeriod.year === new Date().getFullYear()
               
@@ -361,7 +517,7 @@ export default function TeamMember() {
         </div>
 
         <div className="overflow-x-auto max-h-[28rem] relative">
-          <table className="min-w-full divide-y divide-gray-200 table-fixed border-separate border-spacing-0">
+          <table className="min-w-full divide-y divide-gray-200 table-fixed border-separate border-spacing-0 allocation-table">
             <colgroup>
               <col style={{ width: 'var(--col-member)' }} />
               {monthWeeks.map((_, index) => (
@@ -378,57 +534,100 @@ export default function TeamMember() {
               <col style={{ width: 'var(--col-total)' }} />
             </colgroup>
             
-            <thead className="bg-gray-50 sticky top-0">
+                <thead className="bg-gray-50 sticky top-0">
+              {/* Row 1: Week Numbers */}
               <tr>
-                <th className="px-4 py-3 text-left sticky left-0 bg-gray-50 z-20 sticky-project">Project & Role</th>
+                <th 
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky-project"
+                  rowSpan={3}
+                >
+                  Project & Role
+                </th>
                 {monthWeeks.map(weekNum => {
-                  const weekInfo = getWeekDisplay(weekNum, selectedPeriod.year, selectedPeriod.month)
-                  const isCurrentWeek = weekNum === selectedPeriod.week
+                  const isCurrentWeek = weekNum === getCurrentWeek() && selectedPeriod.month === new Date().getMonth() + 1 && selectedPeriod.year === new Date().getFullYear()
                   
                   return (
-                    <React.Fragment key={weekNum}>
-                      <th className={`px-1 py-3 text-center text-xs font-medium ${isCurrentWeek ? 'bg-orange-50' : ''}`}>
-                        {weekInfo.display}
-                      </th>
-                      <th className={`px-1 py-3 text-center text-xs font-medium ${isCurrentWeek ? 'bg-orange-50' : ''}`}>
-                        {weekInfo.display}
-                      </th>
-                      <th className={`px-1 py-3 text-center text-xs font-medium ${isCurrentWeek ? 'bg-orange-50' : ''}`}>
-                        {weekInfo.display}
-                      </th>
-                      <th className={`px-1 py-3 text-center text-xs font-medium ${isCurrentWeek ? 'bg-orange-50' : ''}`}>
-                        {weekInfo.display}
-                      </th>
-                    </React.Fragment>
+                    <th 
+                      key={weekNum}
+                      className={`px-2 py-1 text-center text-sm font-semibold text-gray-700 border-r border-gray-300 ${
+                        isCurrentWeek ? 'bg-orange-100' : ''
+                      }`}
+                      colSpan={4}
+                    >
+                      Week {weekNum}
+                    </th>
                   )
                 })}
-                <th className="px-1 py-3 text-center text-xs font-medium bg-gray-50 border-l-2 border-gray-300">Billable</th>
-                <th className="px-1 py-3 text-center text-xs font-medium bg-gray-50">Non-Bill.</th>
-                <th className="px-1 py-3 text-center text-xs font-medium bg-gray-50">Leaves</th>
-                <th className="px-1 py-3 text-center text-xs font-medium bg-gray-50">Total</th>
+                <th 
+                  className="px-2 py-1 text-center text-sm font-semibold text-gray-700 bg-gray-100 border-l-2 border-gray-300"
+                  colSpan={4}
+                >
+                  TOTAL
+                </th>
               </tr>
               
+              {/* Row 2: Date Ranges */}
               <tr>
-                <th className="px-4 py-2 text-left sticky left-0 bg-gray-50 z-20 sticky-project"></th>
                 {monthWeeks.map(weekNum => {
-                  const weekInfo = getWeekDisplay(weekNum, selectedPeriod.year, selectedPeriod.month)
-                  const isCurrentWeek = weekNum === selectedPeriod.week
+                  const weekInfo = getWeekDisplay(weekNum, selectedPeriod.year)
+                  const isCurrentWeek = weekNum === getCurrentWeek() && selectedPeriod.month === new Date().getMonth() + 1 && selectedPeriod.year === new Date().getFullYear()
+                  
+                  return (
+                    <th 
+                      key={weekNum}
+                      className={`px-2 py-1 text-center text-xs font-medium text-gray-400 border-r border-gray-300 ${
+                        isCurrentWeek ? 'bg-orange-100' : ''
+                      }`}
+                      colSpan={4}
+                    >
+                      {weekInfo.dates}
+                    </th>
+                  )
+                })}
+                <th 
+                  className="px-2 py-1 text-center text-xs font-medium text-gray-400 bg-gray-100 border-l-2 border-gray-300"
+                  colSpan={4}
+                >
+                </th>
+              </tr>
+              
+              {/* Row 3: Sub Headers (B, N, L, T) */}
+              <tr>
+                {monthWeeks.map(weekNum => {
+                  const isCurrentWeek = weekNum === getCurrentWeek() && selectedPeriod.month === new Date().getMonth() + 1 && selectedPeriod.year === new Date().getFullYear()
+                  const bgClass = isCurrentWeek ? 'bg-orange-50' : ''
                   
                   return (
                     <React.Fragment key={weekNum}>
-                      <th className={`px-1 py-2 text-center text-xs font-medium ${isCurrentWeek ? 'bg-orange-50' : ''}`}>B</th>
-                      <th className={`px-1 py-2 text-center text-xs font-medium ${isCurrentWeek ? 'bg-orange-50' : ''}`}>N</th>
-                      <th className={`px-1 py-2 text-center text-xs font-medium ${isCurrentWeek ? 'bg-orange-50' : ''}`}>L</th>
-                      <th className={`px-1 py-2 text-center text-xs font-medium ${isCurrentWeek ? 'bg-orange-50' : ''}`}>T</th>
+                      <th className={`px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide ${bgClass}`}>
+                        Billable
+                      </th>
+                      <th className={`px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide ${bgClass}`}>
+                        Non-Bill.
+                      </th>
+                      <th className={`px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide ${bgClass}`}>
+                        Leave
+                      </th>
+                      <th className={`px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide ${bgClass}`}>
+                        Total
+                      </th>
                     </React.Fragment>
                   )
                 })}
-                <th className="px-1 py-2 text-center text-xs font-medium bg-gray-50 border-l-2 border-gray-300">Sum</th>
-                <th className="px-1 py-2 text-center text-xs font-medium bg-gray-50">Sum</th>
-                <th className="px-1 py-2 text-center text-xs font-medium bg-gray-50">Sum</th>
-                <th className="px-1 py-2 text-center text-xs font-medium bg-gray-50">Sum</th>
-              </tr>
-            </thead>
+                <th className="px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-100 border-l-2 border-gray-300">
+                  Billable
+                </th>
+                <th className="px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-100">
+                  Non-Bill.
+                </th>
+                <th className="px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-100">
+                  Leave
+                </th>
+                <th className="px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-100">
+                  Total
+                </th>
+                  </tr>
+                </thead>
             
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
@@ -444,7 +643,10 @@ export default function TeamMember() {
                   </td>
                 </tr>
               ) : (
-                myProjects.map(project => {
+                myProjects.map((project, index) => {
+                  // Use unique key combining project ID and index to avoid duplicates
+                  const uniqueKey = `${project.id || project.project_id || index}-${index}`
+                  
                   const projectGroup = projectGroups[project.id] || {
                     project_name: project.name || project.project_name,
                     role_name: project.role_name || project.role || 'Team Member',
@@ -458,7 +660,7 @@ export default function TeamMember() {
                   const grandTotal = totalBillable + totalNonBillable + totalLeave
                   
                   return (
-                    <tr key={project.id || project.project_id} className="hover:bg-gray-50">
+                    <tr key={uniqueKey} className="hover:bg-gray-50">
                       {/* Project name and role cell (sticky) */}
                       <td className="px-4 py-4 whitespace-nowrap sticky-project">
                         <div className="text-sm font-medium text-gray-900">{projectGroup.project_name}</div>
@@ -467,7 +669,7 @@ export default function TeamMember() {
                       
                       {/* Week columns */}
                       {monthWeeks.map(weekNum => {
-                        const isCurrentWeek = weekNum === selectedPeriod.week
+                        const isCurrentWeek = weekNum === getCurrentWeek() && selectedPeriod.month === new Date().getMonth() + 1 && selectedPeriod.year === new Date().getFullYear()
                         const weekAllocation = projectGroup.allocations.find(a => a.week === weekNum) || {
                           billable_hrs: 0,
                           non_billable_hrs: 0,
@@ -478,16 +680,16 @@ export default function TeamMember() {
                         
                         return (
                           <React.Fragment key={weekNum}>
-                            <td className={`px-1 py-3 text-center text-xs font-medium text-gray-900 ${isCurrentWeek ? 'bg-orange-50' : ''}`}>
+                            <td className={`px-1 py-3 text-center text-xs font-medium text-gray-900 ${isCurrentWeek ? 'current-week-cell' : ''}`}>
                               {weekAllocation.billable_hrs || 0}
                             </td>
-                            <td className={`px-1 py-3 text-center text-xs font-medium text-gray-900 ${isCurrentWeek ? 'bg-orange-50' : ''}`}>
+                            <td className={`px-1 py-3 text-center text-xs font-medium text-gray-900 ${isCurrentWeek ? 'current-week-cell' : ''}`}>
                               {weekAllocation.non_billable_hrs || 0}
                             </td>
-                            <td className={`px-1 py-3 text-center text-xs font-medium text-gray-900 ${isCurrentWeek ? 'bg-orange-50' : ''}`}>
+                            <td className={`px-1 py-3 text-center text-xs font-medium text-gray-900 ${isCurrentWeek ? 'current-week-cell' : ''}`}>
                               {weekAllocation.leave_hrs || 0}
                             </td>
-                            <td className={`px-1 py-3 text-center text-xs font-bold text-blue-600 border-r border-gray-300 ${isCurrentWeek ? 'bg-orange-50' : ''}`}>
+                            <td className={`px-1 py-3 text-center text-xs font-bold text-blue-600 border-r border-gray-300 ${isCurrentWeek ? 'current-week-cell' : ''}`}>
                               {totalHours}
                             </td>
                           </React.Fragment>
@@ -511,8 +713,8 @@ export default function TeamMember() {
                   )
                 })
               )}
-            </tbody>
-          </table>
+                </tbody>
+              </table>
         </div>
       </div>
 
@@ -548,5 +750,6 @@ export default function TeamMember() {
         </div>
       </div>
     </div>
+    </>
   )
 }
