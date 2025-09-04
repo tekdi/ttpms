@@ -13,6 +13,7 @@ from config import settings
 from database import get_db, SessionLocal
 import calendar
 import json
+# from utils import calculate_experience
 
 # Configure logging
 logging.basicConfig(
@@ -300,24 +301,7 @@ def login(request: LoginRequest, db: SessionLocal = Depends(get_db)):
         user = result.fetchone()
         
         if not user:
-            # For Google OAuth users, check if this is a Google email and create user if needed
-            if request.email.endswith('@gmail.com') or 'google' in request.email.lower():
-                # Create a new user for Google OAuth
-                create_user_result = db.execute(text("""
-                    INSERT INTO users (login, firstname, lastname, admin, status, created_on)
-                    VALUES (:email, :firstname, :lastname, 0, 1, NOW())
-                    RETURNING *
-                """), {
-                    "email": request.email,
-                    "firstname": request.email.split('@')[0],  # Use email prefix as firstname
-                    "lastname": "Google User"  # Default lastname
-                })
-                
-                db.commit()
-                user = create_user_result.fetchone()
-                user_dict = dict(user._mapping)
-            else:
-                raise HTTPException(status_code=401, detail="User not found or inactive")
+            raise HTTPException(status_code=401, detail="User not found or inactive")
         
         user_dict = dict(user._mapping)
         
@@ -348,6 +332,11 @@ def login(request: LoginRequest, db: SessionLocal = Depends(get_db)):
         """), {"user_id": user_dict["id"]})
         
         projects = [dict(project._mapping) for project in projects_result.fetchall()]
+
+        # Calculate total experience if needed
+        # total_experience = calculate_experience(user_dict)
+        total_experience = 0
+
         
         # Create user session
         user_data = {
@@ -358,6 +347,8 @@ def login(request: LoginRequest, db: SessionLocal = Depends(get_db)):
             "PO":bool(3 in user_roles),
             "admin": bool(user_dict["admin"]),
             "status": user_dict["status"],
+            "total_experience": total_experience,
+            "skills": user_dict.get("skill", None),
             "created_on": user_dict["created_on"].isoformat() if user_dict["created_on"] else None
         }
 
@@ -1270,17 +1261,26 @@ def get_bench_summary(
         # Calculate week_start (Monday) from actual year and week
         week_start = get_week_start_from_year_week(actual_year, actual_week)
         
-        # Get bench summary counts using exact classification rules
+        # Get bench summary counts using proper cross-project aggregation
         summary_query = """
+            WITH user_totals AS (
+                SELECT 
+                    ua.user_id,
+                    SUM(COALESCE(ua.billable_hrs, 0)) as total_billable,
+                    SUM(COALESCE(ua.non_billable_hrs, 0)) as total_non_billable,
+                    SUM(COALESCE(ua.leave_hrs, 0)) as total_leave,
+                    SUM(COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) + COALESCE(ua.leave_hrs, 0)) as total_hours
+                FROM user_allocation ua
+                JOIN users u ON ua.user_id = u.id
+                WHERE ua.year = :year AND ua.week = :week
+                GROUP BY ua.user_id
+            )
             SELECT 
-                COUNT(CASE WHEN COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) = 0 THEN 1 END) as fully_benched,
-                COUNT(CASE WHEN 0 < (COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) + COALESCE(ua.leave_hrs, 0)) 
-                          AND (COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) + COALESCE(ua.leave_hrs, 0)) < 40 THEN 1 END) as partial_benched,
-                COUNT(CASE WHEN COALESCE(ua.non_billable_hrs, 0) > 0 THEN 1 END) as non_billable,
-                COUNT(CASE WHEN (COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) + COALESCE(ua.leave_hrs, 0)) > 40 THEN 1 END) as over_utilised
-            FROM user_allocation ua
-            JOIN users u ON ua.user_id = u.id
-            WHERE ua.year = :year AND ua.week = :week
+                COUNT(CASE WHEN (total_billable + total_non_billable) = 0 THEN 1 END) as fully_benched,
+                COUNT(CASE WHEN total_hours > 0 AND total_hours < 40 THEN 1 END) as partial_benched,
+                COUNT(CASE WHEN total_non_billable > 0 THEN 1 END) as non_billable,
+                COUNT(CASE WHEN total_hours > 40 THEN 1 END) as over_utilised
+            FROM user_totals
         """
         
         result = db.execute(text(summary_query), {"year": actual_year, "week": actual_week})
@@ -1451,6 +1451,7 @@ def get_partial_benched_users(
             
             recent_result = db.execute(text(recent_data_query))
             recent_data = recent_result.fetchone()
+            print(recent_data,"="*100)
             
             if recent_data:
                 actual_year = recent_data[0]
@@ -1567,6 +1568,7 @@ def get_non_billable_users(
                 ua.week_start as non_billable_since,
                 COALESCE(ua.updated_by, 'N/A') as project_owner,
                 COALESCE(ua.non_billable_hrs, 0) as non_billable_hrs,
+                (COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) + COALESCE(ua.leave_hrs, 0)) as total_hrs,
                 COALESCE(wr.remark, 'N/A') as reason_for_non_billability,
                 CASE 
                     WHEN u.date_of_joining IS NOT NULL THEN 
@@ -1653,13 +1655,13 @@ def get_over_utilised_users(
                     }
                 }
 
-        # Get over-utilised users using exact classification rule with enhanced data
+        # Get over-utilised users using proper aggregation across all projects
         query = """
             SELECT 
-                ua.user_id,
+                u.id as user_id,
                 CONCAT(u.firstname, ' ', u.lastname) as name,
-                (COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) + COALESCE(ua.leave_hrs, 0)) as total_hrs,
-                p.name as project_name,
+                SUM(COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) + COALESCE(ua.leave_hrs, 0)) as total_hrs,
+                GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') as project_name,
                 CASE 
                     WHEN u.date_of_joining IS NOT NULL THEN 
                         CONCAT(ROUND(COALESCE(u.total_experience, 0) + (DATEDIFF(CURDATE(), u.date_of_joining) / 365.25), 1), ' years')
@@ -1667,11 +1669,12 @@ def get_over_utilised_users(
                         COALESCE(u.total_experience, 'N/A')
                 END as years_of_exp,
                 COALESCE(u.skill, 'N/A') as skills
-            FROM user_allocation ua
-            JOIN users u ON ua.user_id = u.id
+            FROM users u
+            JOIN user_allocation ua ON u.id = ua.user_id
             JOIN projects p ON ua.project_id = p.id
             WHERE ua.year = :year AND ua.week = :week 
-            AND (COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) + COALESCE(ua.leave_hrs, 0)) > 40
+            GROUP BY u.id, u.firstname, u.lastname, u.date_of_joining, u.total_experience, u.skill
+            HAVING SUM(COALESCE(ua.billable_hrs, 0) + COALESCE(ua.non_billable_hrs, 0) + COALESCE(ua.leave_hrs, 0)) > 40
             ORDER BY total_hrs DESC, u.firstname, u.lastname
         """
         
@@ -2086,8 +2089,12 @@ def get_project_weekly_allocations(
             SELECT m.id FROM members m 
             WHERE m.user_id = :user_id AND m.project_id = :project_id
         """), {"user_id": current_user["id"], "project_id": project_id})
+
+        print(current_user,"*"*100)
         
-        if not access_check.fetchone():
+        if current_user.get("admin", False) :
+            pass
+        elif not access_check.fetchone():
             raise HTTPException(status_code=403, detail="Access denied to this project")
         
         # Build query for weekly allocations

@@ -153,6 +153,42 @@ export default function Admin() {
   const [currentBenchType, setCurrentBenchType] = useState('')
   const [benchSummaryExpanded, setBenchSummaryExpanded] = useState(false)
   const [activeBenchTab, setActiveBenchTab] = useState('full-bench')
+
+  // Helper functions for data transformation
+  const calculateDaysOnBench = (benchSince) => {
+    if (!benchSince) return 'N/A'
+    try {
+      const benchDate = new Date(benchSince)
+      const currentDate = new Date()
+      const diffTime = Math.abs(currentDate - benchDate)
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      return diffDays
+    } catch (error) {
+      return 'N/A'
+    }
+  }
+
+  const calculateNonBillablePercentage = (totalHrs) => {
+    if (!totalHrs || totalHrs === 0) return 0
+    const nonBillablePercentage = Math.round(((40 - totalHrs) / 40) * 100)
+    return Math.max(0, Math.min(100, nonBillablePercentage))
+  }
+
+  // Helper function to calculate non-billable percentage for partial bench users
+  const calculatePartialNonBillablePercentage = (totalHrs) => {
+    if (!totalHrs || totalHrs === 0) return 100
+    const billableHrs = Math.min(totalHrs, 40)
+    const nonBillablePercentage = Math.round(((40 - billableHrs) / 40) * 100)
+    return Math.max(0, Math.min(100, nonBillablePercentage))
+  }
+
+  // Helper function to calculate non-billable percentage from non-billable hours
+  const calculateNonBillablePercentageFromHours = (nonBillableHrs, totalHrs) => {
+    if (!totalHrs || totalHrs === 0) return 0
+    if (!nonBillableHrs) return 0
+    const percentage = Math.round((nonBillableHrs / 40) * 100)
+    return Math.max(0, Math.min(100, percentage))
+  }
   
   // State for bench data tables
   const [benchData, setBenchData] = useState({
@@ -764,8 +800,31 @@ export default function Admin() {
         console.log(`${tabName} data loaded:`, data)
         
         if (data.success && data.data) {
+          // Transform the data to map backend field names to frontend expectations
+          const transformedUsers = (data.data.users || data.data || []).map(user => {
+            // Calculate percentage based on bench type
+            let nonBillablePercentage = 0
+            if (tabName === 'partial-bench') {
+              nonBillablePercentage = calculatePartialNonBillablePercentage(user.total_hrs)
+            } else if (tabName === 'non-billable') {
+              nonBillablePercentage = calculateNonBillablePercentageFromHours(user.non_billable_hrs, user.total_hrs)
+            }
+            
+            return {
+              ...user,
+              // Map field names for different bench types
+              bench_since: user.on_bench_since || user.bench_since,
+              partial_bench_since: user.on_partial_bench_since || user.partial_bench_since,
+              days_on_bench: user.days_on_bench || calculateDaysOnBench(user.on_bench_since || user.on_partial_bench_since),
+              non_billable_percentage: user.non_billable_percentage || nonBillablePercentage,
+              // Map over-utilization fields
+              current_allocation: user.current_allocation || user.total_hrs,
+              projects: user.projects || user.project_name || 'N/A'
+            }
+          })
+          
           // Set current bench data for display
-          setCurrentBenchData(data.data.users || data.data || [])
+          setCurrentBenchData(transformedUsers)
           setCurrentBenchType(tabName)
           
           let key = ''
@@ -906,8 +965,13 @@ export default function Admin() {
           user
         })
         
-        // Show overallocation modal
-        await showOverallocationModalWithData(overallocationCheck, user, weekNumber)
+        // Show overallocation modal with current grid values
+        await showOverallocationModalWithData(overallocationCheck, user, weekNumber, {
+          billableHrs,
+          nonBillableHrs, 
+          leaveHrs,
+          totalHrs: billableHrs + nonBillableHrs + leaveHrs
+        })
         return // Don't save yet, wait for user decision
       }
 
@@ -961,20 +1025,56 @@ export default function Admin() {
   }
 
   // Show overallocation modal with data
-  const showOverallocationModalWithData = async (overallocationCheck, user, weekNumber) => {
+  const showOverallocationModalWithData = async (overallocationCheck, user, weekNumber, currentValues = null) => {
     const userName = `${user.firstname} ${user.lastname}`.trim()
     const weekName = `Week ${weekNumber}`
     
     // Prepare modal data
     const modalData = {
       subtitle: `${userName} — ${weekName}: Total across ALL projects: ${overallocationCheck.new_total}h • Limit: 40h • Over by: ${overallocationCheck.over_by}h`,
-      allocations: overallocationCheck.allocations?.map(alloc => ({
-        ...alloc,
-        isCurrentProject: alloc.project_id === selectedProject.id
-      })) || [],
-      totalBillable: overallocationCheck.allocations?.reduce((sum, a) => sum + (parseFloat(a.billable_hrs) || 0), 0) || 0,
-      totalNonBillable: overallocationCheck.allocations?.reduce((sum, a) => sum + (parseFloat(a.non_billable_hrs) || 0), 0) || 0,
-      totalLeave: overallocationCheck.allocations?.reduce((sum, a) => sum + (parseFloat(a.leave_hrs) || 0), 0) || 0,
+      currentProjectSubtitle: `Change made to: ${selectedProject?.name || selectedProject?.project_name || 'Unknown Project'}`,
+      allocations: overallocationCheck.allocations?.map(alloc => {
+        const isCurrentProject = alloc.project_id === selectedProject?.id
+        
+        // If this is the current project and we have current values, use them
+        if (isCurrentProject && currentValues) {
+          return {
+            ...alloc,
+            isCurrentProject: true,
+            billable_hrs: currentValues.billableHrs,
+            non_billable_hrs: currentValues.nonBillableHrs,
+            leave_hrs: currentValues.leaveHrs,
+            total_hours: currentValues.totalHrs
+          }
+        }
+        
+        return {
+          ...alloc,
+          isCurrentProject
+        }
+      }) || [],
+      currentProjectName: selectedProject?.name || selectedProject?.project_name || 'Unknown Project',
+      totalBillable: overallocationCheck.allocations?.reduce((sum, a) => {
+        const isCurrentProject = a.project_id === selectedProject?.id
+        const billableHrs = (isCurrentProject && currentValues) 
+          ? currentValues.billableHrs 
+          : (parseFloat(a.billable_hrs) || 0)
+        return sum + billableHrs
+      }, 0) || 0,
+      totalNonBillable: overallocationCheck.allocations?.reduce((sum, a) => {
+        const isCurrentProject = a.project_id === selectedProject?.id
+        const nonBillableHrs = (isCurrentProject && currentValues) 
+          ? currentValues.nonBillableHrs 
+          : (parseFloat(a.non_billable_hrs) || 0)
+        return sum + nonBillableHrs
+      }, 0) || 0,
+      totalLeave: overallocationCheck.allocations?.reduce((sum, a) => {
+        const isCurrentProject = a.project_id === selectedProject?.id
+        const leaveHrs = (isCurrentProject && currentValues) 
+          ? currentValues.leaveHrs 
+          : (parseFloat(a.leave_hrs) || 0)
+        return sum + leaveHrs
+      }, 0) || 0,
       grandTotal: overallocationCheck.new_total
     }
     
@@ -1248,7 +1348,7 @@ export default function Admin() {
             `"${item.bench_since || 'N/A'}"`,
             `"${item.days_on_bench || 'N/A'}"`,
             `"${item.last_project_owner || 'N/A'}"`,
-            `"${item.years_of_experience || item.years_of_exp || 'N/A'}"`,
+            `"${item.years_of_exp || 'N/A'}"`,
             `"${item.skills || 'N/A'}"`
           ])
           break
@@ -1260,7 +1360,7 @@ export default function Admin() {
             `"${item.partial_bench_since || 'N/A'}"`,
             `"${item.non_billable_percentage || 'N/A'}%"`,
             `"${item.project_owner || 'N/A'}"`,
-            `"${item.years_of_experience || item.years_of_exp || 'N/A'}"`,
+            `"${item.years_of_exp || 'N/A'}"`,
             `"${item.skills || 'N/A'}"`
           ])
           break
@@ -1273,7 +1373,7 @@ export default function Admin() {
             `"${item.project_owner || 'N/A'}"`,
             `"${item.non_billable_since || 'N/A'}"`,
             `"${item.reason_for_non_billability || item.reason || 'N/A'}"`,
-            `"${item.years_of_experience || item.years_of_exp || 'N/A'}"`,
+            `"${item.years_of_exp || 'N/A'}"`,
             `"${item.skills || 'N/A'}"`,
             `"${item.non_billable_percentage || 'N/A'}%"`
           ])
@@ -1285,7 +1385,7 @@ export default function Admin() {
             `"${item.name || item.user_name || 'N/A'}"`,
             `"${item.current_allocation || 'N/A'} hrs/week"`,
             `"${item.projects || 'N/A'}"`,
-            `"${item.years_of_experience || item.years_of_exp || 'N/A'}"`,
+            `"${item.years_of_exp || 'N/A'}"`,
             `"${item.skills || 'N/A'}"`
           ])
           break
@@ -1346,7 +1446,29 @@ export default function Admin() {
       const data = await api.getBenchData(endpoint, year, week)
       
       if (data.success && data.data) {
-        return data.data
+        // Apply the same data transformation for CSV
+        const transformedUsers = (data.data.users || data.data || []).map(user => {
+          // Calculate percentage based on bench type
+          let nonBillablePercentage = 0
+          if (tabName === 'partial-bench') {
+            nonBillablePercentage = calculatePartialNonBillablePercentage(user.total_hrs)
+          } else if (tabName === 'non-billable') {
+            nonBillablePercentage = calculateNonBillablePercentageFromHours(user.non_billable_hrs, user.total_hrs)
+          }
+          
+          return {
+            ...user,
+            // Map field names for different bench types
+            bench_since: user.on_bench_since || user.bench_since,
+            partial_bench_since: user.on_partial_bench_since || user.partial_bench_since,
+            days_on_bench: user.days_on_bench || calculateDaysOnBench(user.on_bench_since || user.on_partial_bench_since),
+            non_billable_percentage: user.non_billable_percentage || nonBillablePercentage,
+            // Map over-utilization fields
+            current_allocation: user.current_allocation || user.total_hrs,
+            projects: user.projects || user.project_name || 'N/A'
+          }
+        })
+        return transformedUsers
       }
       return []
     } catch (error) {
@@ -1610,7 +1732,7 @@ export default function Admin() {
                                 <td className="py-3 px-4 border-b border-gray-200">{member.bench_since || 'N/A'}</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.days_on_bench || 'N/A'}</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.last_project_owner || 'N/A'}</td>
-                                <td className="py-3 px-4 border-b border-gray-200">{member.years_of_experience || 'N/A'}</td>
+                                <td className="py-3 px-4 border-b border-gray-200">{member.years_of_exp || 'N/A'}</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.skills || 'N/A'}</td>
                               </tr>
                             ))
@@ -1695,7 +1817,7 @@ export default function Admin() {
                                 <td className="py-3 px-4 border-b border-gray-200">{member.partial_bench_since || 'N/A'}</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.non_billable_percentage || 'N/A'}%</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.project_owner || 'N/A'}</td>
-                                <td className="py-3 px-4 border-b border-gray-200">{member.years_of_experience || 'N/A'}</td>
+                                <td className="py-3 px-4 border-b border-gray-200">{member.years_of_exp || 'N/A'}</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.skills || 'N/A'}</td>
                               </tr>
                             ))
@@ -1803,7 +1925,7 @@ export default function Admin() {
                                     {member.reason_for_non_billability || member.reason || 'N/A'}
                                   </span>
                                 </td>
-                                <td className="py-3 px-4 border-b border-gray-200">{member.years_of_experience || 'N/A'}</td>
+                                <td className="py-3 px-4 border-b border-gray-200">{member.years_of_exp || 'N/A'}</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.skills || 'N/A'}</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.non_billable_percentage || 'N/A'}%</td>
                               </tr>
@@ -1850,7 +1972,7 @@ export default function Admin() {
                             <th className="py-3 px-4 border-b border-gray-200">Name</th>
                             <th className="py-3 px-4 border-b border-gray-200">Current Allocation (Hrs/Week)</th>
                             <th className="py-3 px-4 border-b border-gray-200">Project(s)</th>
-                            <th className="py-3 px-4 border-b border-gray-200">Years of Experience</th>
+                            <th className="py-3 px-4 border-b border-gray-200">Years of exp</th>
                             <th className="py-3 px-4 border-b border-gray-200">Skills</th>
                           </tr>
                         </thead>
@@ -1870,7 +1992,7 @@ export default function Admin() {
                                 <td className="py-3 px-4 border-b border-gray-200">{member.name || member.user_name || 'N/A'}</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.current_allocation || 'N/A'} hrs/week</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.projects || 'N/A'}</td>
-                                <td className="py-3 px-4 border-b border-gray-200">{member.years_of_experience || 'N/A'}</td>
+                                <td className="py-3 px-4 border-b border-gray-200">{member.years_of_exp || 'N/A'}</td>
                                 <td className="py-3 px-4 border-b border-gray-200">{member.skills || 'N/A'}</td>
                               </tr>
                             ))
@@ -2436,27 +2558,44 @@ export default function Admin() {
         {/* Overallocation Modal - Same as PO page */}
         {showOverallocationModal && (
           <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6">
-              <h3 className="text-lg font-semibold mb-1">⚠ Overallocation</h3>
-              <p className="text-sm text-gray-600 mb-4">{overallocationData.subtitle}</p>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl p-6">
+              <h3 className="text-lg font-semibold mb-1 text-red-600">⚠ Overallocation Detected</h3>
+              <p className="text-sm text-gray-600 mb-2">{overallocationData.subtitle}</p>
+              {overallocationData.currentProjectSubtitle && (
+                <p className="text-sm text-blue-600 font-medium mb-4">
+                  <i className="fas fa-arrow-right mr-1"></i>
+                  {overallocationData.currentProjectSubtitle}
+                </p>
+              )}
               
               <div className="overflow-x-auto border rounded-lg mb-4">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-2 text-left">Project</th>
-                      <th className="px-3 py-2 text-right">Billable</th>
-                      <th className="px-3 py-2 text-right">Non-Bill.</th>
-                      <th className="px-3 py-2 text-right">Leaves</th>
-                      <th className="px-3 py-2 text-right">Total</th>
+                      <th className="px-4 py-3 text-left">Project Details</th>
+                      <th className="px-3 py-3 text-right">Billable</th>
+                      <th className="px-3 py-3 text-right">Non-Bill.</th>
+                      <th className="px-3 py-3 text-right">Leaves</th>
+                      <th className="px-3 py-3 text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {overallocationData.allocations?.map((alloc, index) => (
-                      <tr key={index} className={alloc.isCurrentProject ? 'bg-amber-50' : ''}>
-                        <td className="px-3 py-2">
-                          {alloc.isCurrentProject ? '▶ ' : ''}{alloc.project_name}
-                          {alloc.isCurrentProject ? ' (Updated)' : ''}
+                      <tr key={index} className={
+                        alloc.isCurrentProject 
+                          ? 'bg-blue-50 border-l-4 border-blue-500' 
+                          : 'hover:bg-gray-50'
+                      }>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col">
+                                                      <div className={`font-medium ${alloc.isCurrentProject ? 'text-blue-700 font-semibold' : ''}`}>
+                            {alloc.isCurrentProject ? '▶ ' : ''}{alloc.project_name}
+                            {alloc.isCurrentProject ? ' (Current Project - New Values)' : ''}
+                          </div>
+                            {alloc.project_id && (
+                              <div className="text-xs text-gray-500">ID: {alloc.project_id}</div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-right">{alloc.billable_hrs || 0}</td>
                         <td className="px-3 py-2 text-right">{alloc.non_billable_hrs || 0}</td>
